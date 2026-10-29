@@ -58,7 +58,7 @@ try { savedSettings = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || { disabl
 createApp({
   setup() {
     const rows = ref(savedRows)
-    const masterList = ref(savedMaster) // Stores full objects: { tracking_number, hub, aging, arrival_date }
+    const masterList = ref(savedMaster) 
     const settings = ref(savedSettings)
     
     // Station Switcher State
@@ -92,7 +92,7 @@ createApp({
         }
       } catch (e) {
         console.error('Could not load stations from API', e)
-        stationsList.value = [{ id: 1, unique_identifier: 'KE-3PL-Flexcom Cheptiret-Station' }]
+        stationsList.value = [{ id: 1, unique_identifier: 'KE-3PL-Flexcom Station' }]
       }
     }
 
@@ -155,7 +155,6 @@ createApp({
       })
     })
 
-    // Dynamic Live Aging Calculator
     function computeLiveAging(arrivalDateStr, baseAging = 0) {
       if (!arrivalDateStr) return Number(baseAging)
       const start = new Date(arrivalDateStr)
@@ -178,18 +177,16 @@ createApp({
           matchStatus = matchedMasterItem ? 'matched' : 'unexpected'
         }
 
-        // Calculate live continuous aging
         const arrivalAnchor = matchedMasterItem?.arrival_date || r.arrival_date || new Date().toISOString()
         const baseCsvAging = matchedMasterItem?.aging ?? r.aging ?? 0
         const liveAging = computeLiveAging(arrivalAnchor, baseCsvAging)
-
         const hubValue = matchedMasterItem?.hub || r.hub || 'KE-3PL-Flexcom'
 
         let expiryStatus = 'normal'
         if (liveAging >= 8 && liveAging <= 9) {
-          expiryStatus = 'urgent-red' // Days 8 & 9 highlight
+          expiryStatus = 'urgent-red'
         } else if (liveAging >= 10) {
-          expiryStatus = 'expired-return' // Day 10+ (Reverse to Jumia)
+          expiryStatus = 'expired-return'
         }
 
         return { 
@@ -237,14 +234,13 @@ createApp({
         return false
       }
 
-      // Duplicate Check across physical scanned rows
+      // Duplicate Check with Dual Beep Error Alert
       if (scannedCodesMap.value[trimmed.toUpperCase()]) {
-        setStatus(`Error: Item "${trimmed}" has already been scanned!`, 'error')
+        setStatus(`⚠️ Error: Item "${trimmed}" has already been scanned!`, 'error')
         playAudioSignal('error')
         return false
       }
 
-      // Inherit master attributes if available
       const matchedMaster = masterList.value.find(m => (m.tracking_number || m).trim().toUpperCase() === trimmed.toUpperCase())
       const csvAging = matchedMaster?.aging ?? 0
       const arrivalAnchor = matchedMaster?.arrival_date || new Date(Date.now() - csvAging * 86400000).toISOString()
@@ -260,7 +256,7 @@ createApp({
         note: ''
       })
 
-      setStatus(`Saved: ${trimmed}`, 'success')
+      setStatus(`Successfully saved: ${trimmed}`, 'success')
       playAudioSignal('success')
       return true
     }
@@ -316,7 +312,6 @@ createApp({
         const trNum = parts[0]?.trim() || line
         const hubVal = parts[1]?.trim() || 'KE-3PL-Flexcom'
         const agingVal = Number(parts[2]?.trim() || 0)
-        // Set arrival anchor backward by CSV aging days so counting continues automatically
         const arrivalIso = new Date(Date.now() - agingVal * 86400000).toISOString()
 
         return {
@@ -408,7 +403,7 @@ createApp({
       <!-- Top Header -->
       <header class="bg-teal-700 text-white shadow-md">
         <div class="max-w-6xl mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center gap-3">
-          <h1 class="text-lg font-bold tracking-tight">📦 Station Portal</h1>
+          <h1 class="text-lg font-bold tracking-tight">📦 Package Scanner PWA</h1>
           
           <!-- Station Switcher Dropdown -->
           <div class="w-full sm:w-auto">
@@ -439,7 +434,7 @@ createApp({
             class="flex flex-col items-center justify-center p-3 border rounded-xl shadow-sm transition cursor-pointer"
           >
             <span class="text-2xl mb-1">📷</span>
-            <span class="text-xs font-semibold text-slate-700">Camera</span>
+            <span class="text-xs font-semibold text-slate-700">Camera Scan</span>
           </button>
 
           <button 
@@ -451,7 +446,7 @@ createApp({
             class="flex flex-col items-center justify-center p-3 border rounded-xl shadow-sm transition cursor-pointer"
           >
             <span class="text-2xl mb-1">⌨️</span>
-            <span class="text-xs font-semibold text-slate-700">Manual</span>
+            <span class="text-xs font-semibold text-slate-700">Manual Type</span>
           </button>
 
           <button 
@@ -460,12 +455,12 @@ createApp({
             class="flex flex-col items-center justify-center p-3 border rounded-xl shadow-sm transition cursor-pointer"
           >
             <span class="text-2xl mb-1">⚙️</span>
-            <span class="text-xs font-semibold text-slate-700">Admin Panel</span>
+            <span class="text-xs font-semibold text-slate-700">Admin Controls</span>
           </button>
         </div>
 
         <!-- Notification Banner -->
-        <div v-if="statusMsg.text" :class="statusMsg.type === 'error' ? 'bg-red-50 text-red-800 border-red-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'" class="p-3 mb-6 border rounded-lg text-sm font-medium shadow-sm transition">
+        <div v-if="statusMsg.text" :class="statusMsg.type === 'error' ? 'bg-red-50 text-red-800 border-red-200 font-bold' : 'bg-emerald-50 text-emerald-800 border-emerald-200 font-medium'" class="p-3 mb-6 border rounded-lg text-sm shadow-sm transition">
           {{ statusMsg.text }}
         </div>
 
@@ -603,7 +598,7 @@ createApp({
                 </tr>
 
                 <tr v-if="!unifiedRows.length">
-                  <td colspan="9" class="p-8 text-center text-slate-400 text-sm">No packages recorded or loaded in master list. Use ⚙️ Admin Panel or 📷 Camera.</td>
+                  <td colspan="9" class="p-8 text-center text-slate-400 text-sm">No packages recorded or loaded in master list. Use ⚙️ Admin Controls or 📷 Camera Scan.</td>
                 </tr>
               </tbody>
             </table>
