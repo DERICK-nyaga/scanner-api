@@ -603,7 +603,7 @@ createApp({
                 </tr>
 
                 <tr v-if="!unifiedRows.length">
-                  <td colspan="9" class="p-8 text-center text-slate-400 text-sm">No packages recorded or loaded in master list. Use ⚙️ Admin Panel or 📷 Camera.</td>
+                  <td colspan="9" class="p-8 text-center text-slate-400 text-sm">No packages recorded or loaded in master list. Use ⚙️ Admin or 📷 Camera.</td>
                 </tr>
               </tbody>
             </table>

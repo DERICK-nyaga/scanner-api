@@ -52,7 +52,7 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom shadow-sm">
         <div class="container-fluid">
-            <a class="navbar-brand" href="#">📦 KE-3PL Station</a>
+            <a class="navbar-brand" href="#">📦 KE-3PL Station Portal</a>
             <div class="navbar-nav ms-auto">
                 <a class="nav-link" href="{{ route('admin.stations.index') }}">Stations CRUD</a>
                 <a class="nav-link" href="{{ route('admin.dashboard') }}">Admin Dashboard</a>
