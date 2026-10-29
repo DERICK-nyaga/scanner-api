@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>📦 Station Portal & Scanner</title>
+    <link rel="manifest" href="manifest.json" />
+    <!-- Tailwind CSS Play CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans antialiased">
+    <div id="app"></div>
+
+    <!-- Vue 3 and Html5Qrcode libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.prod.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="app.js"></script>
+
+    <!-- Service Worker Registration -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('sw.js')
+            .then(() => console.log('Service Worker Registered'))
+            .catch((err) => console.log('Service Worker Failed', err));
+        });
+      }
+    </script>
+</body>
+</html>
+<!-- lets create a user account which should look like this KE-3PL-Flexcom Cheptiret-Station and allow the admin to directly upload lists into the accounts and also allow the admin to manage the accounts. The user account should have a unique identifier and be associated with specific permissions for uploading and managing lists. The admin interface should provide options to create, edit, and delete user accounts, as well as assign roles and permissions. Additionally, the system should log all actions taken by users for auditing purposes.
+when an admin directly uploads a list into a user account, the system should validate the data format and ensure that it meets the required criteria before saving it to the database. The admin should also be able to view the history of uploaded lists for each user account, including timestamps and details of the uploaded files.
+To implement the user account management and list upload functionality as described, we can outline the following features and structure for the system:
+1. **User Account Structure**:
+   - Each user account will have a unique identifier (e.g., KE-3PL-Flexcom Cheptiret-Station).
+   - User accounts will have associated roles and permissions (e.g., upload lists, manage lists).
+   - The system will maintain a log of all actions performed by users for auditing purposes.
+
+2. **Admin Interface**:
+   - The admin interface will provide options to create, edit, and delete user accounts.
+    - Admins can assign roles and permissions to user accounts.
+    - Admins can directly upload lists into user accounts, with validation of data format and criteria before saving to the database.
+    - Admins can view the history of uploaded lists for each user account, including timestamps and details of the uploaded files.
+
+3. **List Upload Functionality**:
+   - When an admin uploads a list, the system will validate the data format (e.g
+., CSV, JSON) and ensure it meets the required criteria (e.g., correct headers, data types).
+    - If the validation passes, the list will be saved to the database and associated with the respective user account.
+    - If the validation fails, the admin will receive an error message indicating the issues with the uploaded file.
+4. **Audit Logging**:
+    - The system will log all actions taken by users, including account creation, edits, deletions, and list uploads.
+     - Each log entry will include the user ID, action performed, timestamp, and any relevant details (e.g., file name for uploads).
+     - Admins can view the audit logs to monitor user activity and ensure compliance with policies.
+5. **Database Schema**:
+   - Users Table:
+     - id (primary key)
+     - unique_identifier (string, unique)
+     - role (string)
+     - permissions (JSON or string)
+     - created_at (timestamp)
+     - updated_at (timestamp)
+
+- Lists Table:
+     - id (primary key)
+     - user_id (foreign key referencing Users table)
+     - file_name (string)
+     - file_path (string)
+     - uploaded_at (timestamp)
+
+
+- Audit Logs Table:
+     - id (primary key)
+        - user_id (foreign key referencing Users table)
+        - action (string)
+        - details (text)
+        - timestamp (timestamp)
+6. **Implementation Steps**:
+   - Set up the database schema with the Users, Lists, and Audit Logs tables.
+    - Develop the admin interface with options to manage user accounts and upload lists.
+    - Implement the list upload functionality with data validation and error handling.
+    - Implement the audit logging system to track user actions.
+
+7. **Security Considerations**:
+   - Ensure that user accounts have strong authentication mechanisms (e.g., password hashing, multi-factor
+    authentication).
+    - Implement role-based access control to restrict actions based on user permissions.
+
+    every action performed by users should be logged for auditing purposes, and sensitive data should be protected through encryption and secure storage practices.
+
+    once the user has finished scanning items and everything is in order the admin should be able to generate a report of the scanned items and their details. The report should include information such as item names, quantities, timestamps, and any relevant metadata. The admin should have the option to export the report in various formats (e.g., PDF, CSV) for further analysis or record-keeping.
+    the scanner should also have the capability to generate real-time reports based on the scanned items, allowing the admin to monitor inventory levels and track item movements. The report generation feature should be accessible through the admin interface, providing a user-friendly experience for generating and exporting reports.
+    also note that the system should have a notification mechanism to alert the admin of any discrepancies or issues detected during the scanning process. This could include notifications for missing items, incorrect quantities, or any other anomalies that require attention. The notification system should be configurable, allowing the admin to set thresholds and preferences for receiving alerts.
+    after every audit day the scanlog should be logged and a user cannot be able to edit it or delete it up. this should be achieved by the admin publishing the scanlog at the end of each audit day, which will lock the log and prevent any further modifications. The system should maintain a version history of the scanlogs, allowing the admin to view previous logs for reference and auditing purposes.
+    an admin should be able to generate a summary report of the scanlogs, providing an overview of the scanned items, discrepancies, and any actions taken during the audit process. The summary report should be exportable in various formats for record-keeping and compliance purposes.an admin cannot delete or edit the scanlogs once they have been published, ensuring the integrity and reliability of the audit records.
+    the superadmin should have the ability to manage all user accounts, including creating new accounts, editing existing accounts, and deleting accounts as necessary. The superadmin should also have the authority to assign roles and permissions to users, ensuring that each user has the appropriate level of access based on their responsibilities. Additionally, the superadmin should be able to view and manage all audit logs, providing oversight and accountability for all actions taken within the system.they also have the ability to directly trackdown packages and be able to establish packages that are overdue(a package can only be at the station for a duration of 9days the 10th day they all reverse and they should be returned to the Jumia network for further action). The superadmin should have access to detailed reports and analytics, allowing them to monitor the performance of the system and identify any areas for improvement.
+    once reverse packages(packages back to Jumia Network) have been handed over and dispatched the user at the station level should also be able to upload a copy of the delivery note/waybill into the same system and there should also be a table for this too. from the scanlog there should be a column for dates which are attached alongside the list of expected items and the dates should have a countdown from day 0-9days that makes 10 days in total and packages that are 8-9 days should highlight in red and send a notification to the users and admins so that they can check them at the system as well as clear out from the system. the notification should include the tracking number, their actual dates which matches the real system and it should send this data before the 9th day so as to enable the user and admin get ample time to track where the packages are before their time lapses. The system should also have a feature to generate alerts for packages that are approaching their expiration date, allowing users and admins to take proactive measures to address any potential issues.
+    we will also implement a  feature that allows users and admins to send sms to customers to remind them to collect their packages before the expiration date. The SMS notifications will include relevant details such as the tracking number, expected collection date, and any necessary instructions for retrieving the package. This feature will help improve customer satisfaction and reduce the number of unclaimed packages at the station.
+    this will have its own table in the database to store the SMS notifications, including the recipient's phone number, message content, timestamp, and status (e.g., sent, failed). The system will also provide an interface for users and admins to view the history of sent SMS notifications, allowing them to track communication with customers and ensure that reminders are being sent in a timely manner.
+    in the data that the admin uploads into the system, there should be a column for the customers phone numbers and the system should be able to extract the phone numbers from the data and send sms to the customers reminding them to collect their packages before the expiration date. The system should also have a feature that allows users and admins to customize the SMS message content, enabling them to include specific instructions or information relevant to the package collection process.
+    there should also be a table where the system stores the details of the packages that have been returned to the Jumia network, including tracking numbers, return dates, and any relevant notes or comments. This table will allow users and admins to track the status of returned packages and ensure that they are properly processed by the Jumia network. in this also there should be a feature that allows users and admins to generate reports on returned packages, providing insights into the reasons for returns, the frequency of returns, and any patterns or trends that may be identified. These reports can help inform decision-making and improve the overall efficiency of the package handling process. the return table there should be details for the person that picked them where the system can generate an otp for the person that picked them and the otp should be sent to the person that picked them and also to the admin and user at the station level. The system should also have a feature that allows users and admins to track the status of returned packages in real-time, providing updates on their location and estimated delivery times. This will help ensure that returned packages are properly managed and processed by the Jumia network, reducing delays and improving customer satisfaction.
+    contacts for the person that picked the returned packages should be stored in the system, including their name, phone number, and any relevant identification details. This information will help ensure accountability and facilitate communication in case of any issues or discrepancies with the returned packages. The system should also have a feature that allows users and admins to generate reports on the individuals responsible for picking up returned packages, providing insights into their performance and reliability. These reports can help inform decision-making and improve the overall efficiency of the package handling process. this is what will be used to send the otp to them to acknowledge that they have picked the returned packages and also to ensure that the returned packages are properly tracked and accounted for throughout the return process. The system should also have a feature that allows users and admins to generate reports on the OTP verification process, providing insights into the success rate of OTP verifications and any issues or discrepancies that may arise. These reports can help inform decision-making and improve the overall efficiency of the package handling process.
+     add any other tables that you think are necessary for the system to function properly and efficiently. -->
