@@ -460,7 +460,7 @@ createApp({
             class="flex flex-col items-center justify-center p-3 border rounded-xl shadow-sm transition cursor-pointer"
           >
             <span class="text-2xl mb-1">⚙️</span>
-            <span class="text-xs font-semibold text-slate-700">Admin Panel</span>
+            <span class="text-xs font-semibold text-slate-700">Nyaga</span>
           </button>
         </div>
 
@@ -603,7 +603,7 @@ createApp({
                 </tr>
 
                 <tr v-if="!unifiedRows.length">
-                  <td colspan="9" class="p-8 text-center text-slate-400 text-sm">No packages recorded or loaded in master list. Use ⚙️ Admin or 📷 Camera.</td>
+                  <td colspan="9" class="p-8 text-center text-slate-400 text-sm">No packages recorded or loaded in master list. Use ⚙️ Admin Panel or 📷 Camera.</td>
                 </tr>
               </tbody>
             </table>
