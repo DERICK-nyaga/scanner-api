@@ -30,13 +30,13 @@ use Illuminate\Support\Facades\Route;
     });
 
     // Station CRUD and Data Details API
-    Route::prefix('admin/stations')->group(function () {
-        Route::get('/', [AdminController::class, 'indexStations']);
-        Route::get('/{stationId}/details', [AdminController::class, 'getStationData']);
-        Route::post('/{stationId}/master-list', [AdminController::class, 'uploadMasterList']);
-        Route::post('/', [AdminController::class, 'storeStation']);
-        Route::put('/{id}', [AdminController::class, 'updateStation']);
-        Route::delete('/{id}', [AdminController::class, 'destroyStation']);
+    Route::prefix('admin')->group(function () {
+        Route::get('/stations', [AdminController::class, 'indexStations']);
+        Route::get('/stations/{stationId}/details', [AdminController::class, 'getStationData']);
+        Route::post('/stations/{stationId}/master-list', [AdminController::class, 'uploadMasterList']);
+        Route::post('/stations', [AdminController::class, 'storeStation']);
+        Route::put('/stations/{id}', [AdminController::class, 'updateStation']);
+        Route::delete('/stations/{id}', [AdminController::class, 'destroyStation']);
     });
 
 // });

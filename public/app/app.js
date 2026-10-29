@@ -460,7 +460,7 @@ createApp({
             class="flex flex-col items-center justify-center p-3 border rounded-xl shadow-sm transition cursor-pointer"
           >
             <span class="text-2xl mb-1">⚙️</span>
-            <span class="text-xs font-semibold text-slate-700">Nyaga</span>
+            <span class="text-xs font-semibold text-slate-700">Admin Panel</span>
           </button>
         </div>
 
