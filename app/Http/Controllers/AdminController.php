@@ -135,8 +135,22 @@ class AdminController extends Controller {
     }
 
     // Fetch all stations for the frontend dropdown switcher
-    public function indexStations() {
-        return response()->json(Station::withCount(['masterLists', 'scanLogs'])->get());
+    // public function indexStations() {
+    //     return response()->json(Station::withCount(['masterLists', 'scanLogs'])->get());
+    // }
+
+    public function indexStations()
+    {
+        try {
+            $stations = \App\Models\Station::all();
+            return response()->json($stations);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ], 500);
+        }
     }
 
     // Fetch station details including its uploaded master list items
