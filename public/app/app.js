@@ -1,4 +1,4 @@
-const { createApp, ref, computed, watch, nextTick, onMounted } = Vue
+const { createApp, ref, computed, watch, nextTick, onMounted, onUnmounted } = Vue
 
 const pad = (n) => String(n).padStart(2, '0')
 const now = () => {
@@ -42,7 +42,7 @@ function playAudioSignal(type) {
   } catch (e) {}
 }
 
-const ROWS_KEY = 'scanner-rows-v4'
+const ROWS_KEY = 'scanner-rows-v5'
 const MASTER_KEY = 'scanner-master-list-v4'
 const SETTINGS_KEY = 'scanner-settings'
 
@@ -61,11 +61,10 @@ createApp({
     const masterList = ref(savedMaster) 
     const settings = ref(savedSettings)
     
-    // Station Switcher State
     const currentStationId = ref(localStorage.getItem('active_station_id') || '1')
     const stationsList = ref([])
 
-    const mode = ref(null) // 'camera' | 'keyboard' | 'admin'
+    const mode = ref(null) 
     const typed = ref('')
     const lastScan = ref('')
     const sessionCount = ref(0)
@@ -74,6 +73,7 @@ createApp({
 
     let scanner = null
     let lastCode = '', lastTime = 0
+    let pollInterval = null
 
     async function fetchStations() {
       try {
@@ -81,7 +81,6 @@ createApp({
         if (res.ok) {
           const data = await res.json()
           stationsList.value = data
-          
           if (data.length > 0) {
             const exists = data.some(s => String(s.id) === String(currentStationId.value))
             if (!exists) {
@@ -92,18 +91,84 @@ createApp({
         }
       } catch (e) {
         console.error('Could not load stations from API', e)
-        stationsList.value = [{ id: 1, unique_identifier: 'KE-3PL-Flexcom Station' }]
+      }
+    }
+
+    async function fetchServerScans() {
+      try {
+        const res = await fetch('/api/scans')
+        if (res.ok) {
+          const data = await res.json()
+          const scanItems = Array.isArray(data) ? data : (data.data || [])
+          
+          if (scanItems.length > 0) {
+            // Merge server scans while preserving local rows structure to prevent disappearing UI state
+            const serverRowsMap = new Map()
+            scanItems.forEach(item => {
+              const code = String(item.code || '').trim().toUpperCase()
+              if (code) {
+                serverRowsMap.set(code, {
+                  id: item.client_id || item.id || uid(),
+                  code: item.code,
+                  hub: item.hub || 'KE-3PL-Flexcom',
+                  aging: item.aging || 0,
+                  arrival_date: item.arrival_date,
+                  ts: item.scanned_at || item.created_at || now(),
+                  method: item.method || 'scanned',
+                  note: item.note || ''
+                })
+              }
+            })
+
+            // Combine with any local rows not yet overwritten
+            rows.value.forEach(r => {
+              const c = String(r.code || '').trim().toUpperCase()
+              if (c && !serverRowsMap.has(c)) {
+                serverRowsMap.set(c, r)
+              }
+            })
+
+            rows.value = Array.from(serverRowsMap.values())
+          }
+        }
+      } catch (e) {
+        console.error('Failed to sync scans in real-time', e)
+      }
+    }
+
+    async function syncToServer(payloadRows) {
+      try {
+        await fetch('/api/scans/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({
+            scans: payloadRows.map(r => ({
+              client_id: r.id,
+              code: r.code,
+              scanned_at: r.ts,
+              method: r.method,
+              note: r.note
+            }))
+          })
+        })
+      } catch (e) {
+        console.error('Background sync failed', e)
       }
     }
 
     onMounted(() => {
       fetchStations()
+      fetchServerScans()
+      pollInterval = setInterval(fetchServerScans, 4000)
+    })
+
+    onUnmounted(() => {
+      if (pollInterval) clearInterval(pollInterval)
     })
 
     async function switchStation(id) {
       currentStationId.value = id
       localStorage.setItem('active_station_id', id)
-      
       try {
         const res = await fetch(`/api/admin/stations/${id}/details`)
         if (res.ok) {
@@ -141,7 +206,7 @@ createApp({
     const scannedCodesMap = computed(() => {
       const map = {}
       rows.value.forEach(r => {
-        const c = r.code.trim().toUpperCase()
+        const c = String(r.code || '').trim().toUpperCase()
         if (c) map[c] = (map[c] || 0) + 1
       })
       return map
@@ -150,7 +215,7 @@ createApp({
     const missingItems = computed(() => {
       const scanned = scannedCodesMap.value
       return masterList.value.filter(item => {
-        const code = (item.tracking_number || item).trim().toUpperCase()
+        const code = String(item.tracking_number || item).trim().toUpperCase()
         return !scanned[code]
       })
     })
@@ -165,13 +230,13 @@ createApp({
 
     const unifiedRows = computed(() => {
       const list = rows.value.map(r => {
-        const cleanCode = r.code.trim().toUpperCase()
+        const cleanCode = String(r.code || '').trim().toUpperCase()
         let matchStatus = 'untracked'
         let matchedMasterItem = null
 
         if (masterList.value.length > 0) {
           matchedMasterItem = masterList.value.find(m => {
-            const mCode = (m.tracking_number || m).trim().toUpperCase()
+            const mCode = String(m.tracking_number || m).trim().toUpperCase()
             return mCode === cleanCode
           })
           matchStatus = matchedMasterItem ? 'matched' : 'unexpected'
@@ -234,18 +299,17 @@ createApp({
         return false
       }
 
-      // Duplicate Check with Dual Beep Error Alert
       if (scannedCodesMap.value[trimmed.toUpperCase()]) {
-        setStatus(`⚠️ Error: Item "${trimmed}" has already been scanned!`, 'error')
+        setStatus(`Error: Item "${trimmed}" has already been scanned!`, 'error')
         playAudioSignal('error')
         return false
       }
 
-      const matchedMaster = masterList.value.find(m => (m.tracking_number || m).trim().toUpperCase() === trimmed.toUpperCase())
+      const matchedMaster = masterList.value.find(m => String(m.tracking_number || m).trim().toUpperCase() === trimmed.toUpperCase())
       const csvAging = matchedMaster?.aging ?? 0
       const arrivalAnchor = matchedMaster?.arrival_date || new Date(Date.now() - csvAging * 86400000).toISOString()
 
-      rows.value.unshift({
+      const newRow = {
         id: uid(),
         code: trimmed,
         hub: matchedMaster?.hub || 'KE-3PL-Flexcom',
@@ -254,15 +318,14 @@ createApp({
         ts: now(),
         method,
         note: ''
-      })
+      }
 
-      setStatus(`Successfully saved: ${trimmed}`, 'success')
+      rows.value.unshift(newRow)
+      syncToServer([newRow])
+
+      setStatus(`Saved & Verified: ${trimmed}`, 'success')
       playAudioSignal('success')
       return true
-    }
-
-    const removeRow = (id) => {
-      rows.value = rows.value.filter((r) => r.id !== id)
     }
 
     async function openMode(m) {
@@ -384,7 +447,6 @@ createApp({
       settings,
       unifiedRows,
       missingItems,
-      removeRow,
       mode,
       openMode,
       closeMode,
@@ -403,7 +465,7 @@ createApp({
       <!-- Top Header -->
       <header class="bg-teal-700 text-white shadow-md">
         <div class="max-w-6xl mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center gap-3">
-          <h1 class="text-lg font-bold tracking-tight">📦 Package Scanner PWA</h1>
+          <h1 class="text-lg font-bold tracking-tight">📦 Station Portal (Realtime)</h1>
           
           <!-- Station Switcher Dropdown -->
           <div class="w-full sm:w-auto">
@@ -434,7 +496,7 @@ createApp({
             class="flex flex-col items-center justify-center p-3 border rounded-xl shadow-sm transition cursor-pointer"
           >
             <span class="text-2xl mb-1">📷</span>
-            <span class="text-xs font-semibold text-slate-700">Camera Scan</span>
+            <span class="text-xs font-semibold text-slate-700">Camera</span>
           </button>
 
           <button 
@@ -446,7 +508,7 @@ createApp({
             class="flex flex-col items-center justify-center p-3 border rounded-xl shadow-sm transition cursor-pointer"
           >
             <span class="text-2xl mb-1">⌨️</span>
-            <span class="text-xs font-semibold text-slate-700">Manual Type</span>
+            <span class="text-xs font-semibold text-slate-700">Manual</span>
           </button>
 
           <button 
@@ -455,12 +517,12 @@ createApp({
             class="flex flex-col items-center justify-center p-3 border rounded-xl shadow-sm transition cursor-pointer"
           >
             <span class="text-2xl mb-1">⚙️</span>
-            <span class="text-xs font-semibold text-slate-700">Admin Controls</span>
+            <span class="text-xs font-semibold text-slate-700">Admin Panel</span>
           </button>
         </div>
 
         <!-- Notification Banner -->
-        <div v-if="statusMsg.text" :class="statusMsg.type === 'error' ? 'bg-red-50 text-red-800 border-red-200 font-bold' : 'bg-emerald-50 text-emerald-800 border-emerald-200 font-medium'" class="p-3 mb-6 border rounded-lg text-sm shadow-sm transition">
+        <div v-if="statusMsg.text" :class="statusMsg.type === 'error' ? 'bg-red-50 text-red-800 border-red-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'" class="p-3 mb-6 border rounded-lg text-sm font-medium shadow-sm transition">
           {{ statusMsg.text }}
         </div>
 
@@ -523,7 +585,6 @@ createApp({
                   <th class="p-3">Timestamp</th>
                   <th class="p-3">Method</th>
                   <th class="p-3">Notes</th>
-                  <th class="p-3 text-center w-12">Action</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100 text-sm">
@@ -542,12 +603,7 @@ createApp({
                   <td class="p-3 text-center text-xs font-semibold text-slate-400">{{ unifiedRows.length - i }}</td>
                   
                   <td class="p-3 font-mono">
-                    <template v-if="r.source === 'physical'">
-                      <input v-model="r.code" class="w-full bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-teal-500 rounded px-1" />
-                    </template>
-                    <template v-else>
-                      <span class="text-slate-600">{{ r.code }}</span>
-                    </template>
+                    <span class="text-slate-800 font-semibold">{{ r.code }}</span>
                   </td>
 
                   <td class="p-3 text-xs font-medium text-slate-600">
@@ -584,21 +640,12 @@ createApp({
                   </td>
 
                   <td class="p-3">
-                    <template v-if="r.source === 'physical'">
-                      <input v-model="r.note" placeholder="Add note..." class="w-full bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-teal-500 rounded px-1 text-slate-600 text-xs" />
-                    </template>
-                    <template v-else>
-                      <span class="text-xs text-slate-400 italic">{{ r.note }}</span>
-                    </template>
-                  </td>
-
-                  <td class="p-3 text-center">
-                    <button v-if="r.source === 'physical'" @click="removeRow(r.id)" class="text-slate-400 hover:text-rose-600 font-bold transition cursor-pointer" title="Remove row">✕</button>
+                    <span class="text-xs text-slate-600">{{ r.note || '-' }}</span>
                   </td>
                 </tr>
 
                 <tr v-if="!unifiedRows.length">
-                  <td colspan="9" class="p-8 text-center text-slate-400 text-sm">No packages recorded or loaded in master list. Use ⚙️ Admin Controls or 📷 Camera Scan.</td>
+                  <td colspan="8" class="p-8 text-center text-slate-400 text-sm">No packages recorded or loaded in master list. Use ⚙️ Admin Panel or 📷 Camera.</td>
                 </tr>
               </tbody>
             </table>

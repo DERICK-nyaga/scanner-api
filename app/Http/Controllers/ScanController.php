@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http\Controllers;
 
 use App\Models\Scan;
@@ -9,10 +10,10 @@ class ScanController extends Controller
 {
     public function index()
     {
-        return Scan::orderByDesc('id')->paginate(500);
+        // Return latest scans for real-time viewing across devices
+        return Scan::orderByDesc('id')->take(500)->get();
     }
 
-    // Upsert everything from the phone; re-syncing never creates copies.
     public function bulk(Request $request)
     {
         $data = $request->validate([
@@ -23,19 +24,17 @@ class ScanController extends Controller
             'scans.*.method'     => 'required|in:scanned,typed',
             'scans.*.note'       => 'nullable|string|max:255',
         ]);
+        
         $now = now();
         $rows = array_map(fn ($s) => $s + ['note' => $s['note'] ?? '', 'created_at' => $now, 'updated_at' => $now], $data['scans']);
+        
         DB::transaction(fn () => Scan::upsert($rows, ['client_id'], ['code', 'scanned_at', 'method', 'note', 'updated_at']));
+        
         return ['synced' => count($rows)];
     }
 
-    public function destroy(string $clientId)
-    {
-        Scan::where('client_id', $clientId)->delete();
-        return response()->noContent();
-    }
+    // NOTE: destroy() method has been permanently removed to ensure zero deletion privileges.
 
-    // GET /api/scans/export  -> CSV with a Duplicate column, opens in Excel/WPS
     public function export()
     {
         $counts = Scan::select('code', DB::raw('count(*) c'))->groupBy('code')->pluck('c', 'code');
