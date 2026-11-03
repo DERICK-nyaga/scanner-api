@@ -1,10 +1,6 @@
 const { createApp, ref, computed, watch, nextTick, onMounted, onUnmounted } = Vue
-
 const pad = (n) => String(n).padStart(2, '0')
-const now = () => {
-  const d = new Date()
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-}
+const now = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` }
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random())
 
 // Web Audio Beep Synthesizer
@@ -13,7 +9,6 @@ function playAudioSignal(type) {
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)()
     if (audioCtx.state === 'suspended') audioCtx.resume()
-
     if (type === 'success') {
       const osc = audioCtx.createOscillator()
       const gain = audioCtx.createGain()
@@ -57,13 +52,11 @@ createApp({
   setup() {
     // rows represents the unified state fetched straight from the server API
     const rows = ref([])
-    const masterList = ref(savedMaster) 
+    const masterList = ref(savedMaster)
     const settings = ref(savedSettings)
-    
     const currentStationId = ref(localStorage.getItem('active_station_id') || '')
     const stationsList = ref([])
-
-    const mode = ref(null) 
+    const mode = ref(null)
     const typed = ref('')
     const lastScan = ref('')
     const sessionCount = ref(0)
@@ -71,7 +64,6 @@ createApp({
     const masterInputText = ref('')
     const isOnline = ref(navigator.onLine)
     const isSyncing = ref(false)
-
     let scanner = null
     let lastCode = '', lastTime = 0
     let pollInterval = null
@@ -109,7 +101,7 @@ createApp({
       }
     }
 
-    // Step 2 & 3: Fetch clean server-side state (Server is Source of Truth)
+    // Fetch clean server-side state (Server is Source of Truth)
     async function fetchServerScans() {
       if (!currentStationId.value) return
       try {
@@ -126,7 +118,6 @@ createApp({
         if (res.ok) {
           const data = await res.json()
           const scanItems = Array.isArray(data) ? data : (data.data || [])
-          
           const serverRowsMap = new Map()
           scanItems.forEach(item => {
             const code = String(item.code || item.tracking_number || '').trim().toUpperCase()
@@ -144,7 +135,6 @@ createApp({
               })
             }
           })
-
           rows.value = Array.from(serverRowsMap.values())
         }
       } catch (e) {
@@ -156,26 +146,21 @@ createApp({
     function getOutbox() {
       try { return JSON.parse(localStorage.getItem(OUTBOX_KEY)) || [] } catch { return [] }
     }
-
     function saveOutbox(queue) {
       try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(queue)) } catch {}
     }
 
-    // Step 2: Push mutations via Outbox pattern with UUID handling
+    // Push mutations via Outbox pattern with UUID handling
     async function syncToServer(payloadRows) {
       if (!currentStationId.value) return
-
       const outbox = getOutbox()
-      // Append new actions to local outbox queue flagged as pending
       payloadRows.forEach(r => {
         if (!outbox.some(item => item.id === r.id)) {
           outbox.push({ station_id: currentStationId.value, ...r, synced: false })
         }
       })
       saveOutbox(outbox)
-
-      if (!navigator.onLine) return // Skip network call if offline
-
+      if (!navigator.onLine) return
       await flushOutbox()
     }
 
@@ -183,9 +168,7 @@ createApp({
       if (!navigator.onLine || isSyncing.value) return
       const outbox = getOutbox()
       const pending = outbox.filter(item => !item.synced && String(item.station_id) === String(currentStationId.value))
-      
       if (pending.length === 0) return
-
       isSyncing.value = true
       try {
         const res = await fetch('/api/scans/bulk', {
@@ -194,7 +177,7 @@ createApp({
           body: JSON.stringify({
             station_id: currentStationId.value,
             scans: pending.map(r => ({
-              client_id: r.id, // Step 1: Pass stable UUIDv4 to backend API
+              client_id: r.id,
               code: r.code,
               scanned_at: r.ts,
               method: r.method,
@@ -202,18 +185,15 @@ createApp({
             }))
           })
         })
-
         if (res.ok) {
-          // Mark matching items as synced and clean outbox
           const remaining = getOutbox().map(item => {
             if (pending.some(p => p.id === item.id)) {
               return { ...item, synced: true }
             }
             return item
-          }).filter(item => !item.synced) // Remove successfully synced records
-
+          }).filter(item => !item.synced)
           saveOutbox(remaining)
-          await fetchServerScans() // Pull fresh server state after sync
+          await fetchServerScans()
         }
       } catch (e) {
         console.error('Outbox flush failed', e)
@@ -224,7 +204,6 @@ createApp({
 
     onMounted(() => {
       fetchStations()
-      // 15-second background sync and poll interval
       pollInterval = setInterval(() => {
         if (currentStationId.value) {
           fetchServerScans()
@@ -242,16 +221,10 @@ createApp({
         const res = await fetch(`/api/admin/stations/${id}/details`)
         if (res.ok) {
           const data = await res.json()
-          
           masterList.value = (data.master_list || []).map(m => {
             const initialAging = Number(m.aging || 0)
-            return {
-              ...m,
-              arrival_date: m.arrival_date || new Date(Date.now() - initialAging * 86400000).toISOString()
-            }
+            return { ...m, arrival_date: m.arrival_date || new Date(Date.now() - initialAging * 86400000).toISOString() }
           })
-
-          // Enforce server-side manual typing restriction securely
           if (data.station && typeof data.station.disable_manual !== 'undefined') {
             settings.value.disableManual = Boolean(data.station.disable_manual)
           }
@@ -265,17 +238,14 @@ createApp({
       if (!id) return
       currentStationId.value = id
       localStorage.setItem('active_station_id', id)
-      
-      rows.value = [] 
+      rows.value = []
       masterList.value = []
-      
       await loadStationDetails(id)
       await fetchServerScans()
       flushOutbox()
       setStatus(`Switched to station context successfully.`, 'success')
     }
 
-    // Only watch settings and master list for local storage caching (NOT rows)
     watch(masterList, () => {
       try { localStorage.setItem(MASTER_KEY, JSON.stringify(masterList.value)) } catch {}
     }, { deep: true })
@@ -294,7 +264,6 @@ createApp({
         const c = String(r.code || '').trim().toUpperCase()
         if (c) map[c] = (map[c] || 0) + 1
       })
-      // Also check local pending outbox items so offline scans trigger duplicate warnings immediately
       getOutbox().forEach(r => {
         if (String(r.station_id) === String(currentStationId.value)) {
           const c = String(r.code || '').trim().toUpperCase()
@@ -321,18 +290,15 @@ createApp({
     }
 
     const unifiedRows = computed(() => {
-      // Combine server rows with any pending offline outbox items so UI updates instantly
       const localPending = getOutbox().filter(item => String(item.station_id) === String(currentStationId.value))
       const combinedMap = new Map()
-
       rows.value.forEach(r => combinedMap.set(r.code, r))
       localPending.forEach(r => combinedMap.set(r.code, { ...r, matchStatus: 'untracked' }))
-
+      
       const list = Array.from(combinedMap.values()).map(r => {
         const cleanCode = String(r.code || '').trim().toUpperCase()
         let matchStatus = r.matchStatus || 'untracked'
         let matchedMasterItem = null
-
         if (masterList.value.length > 0) {
           matchedMasterItem = masterList.value.find(m => {
             const mCode = String(m.tracking_number || m).trim().toUpperCase()
@@ -344,27 +310,17 @@ createApp({
             matchStatus = 'unexpected'
           }
         }
-
         const arrivalAnchor = matchedMasterItem?.arrival_date || r.arrival_date || new Date().toISOString()
         const baseCsvAging = matchedMasterItem?.aging ?? r.aging ?? 0
         const liveAging = computeLiveAging(arrivalAnchor, baseCsvAging)
         const hubValue = matchedMasterItem?.hub || r.hub || 'KE-3PL-Flexcom'
-
         let expiryStatus = 'normal'
         if (liveAging >= 8 && liveAging <= 9) {
           expiryStatus = 'urgent-red'
         } else if (liveAging >= 10) {
           expiryStatus = 'expired-return'
         }
-
-        return { 
-          ...r, 
-          hub: hubValue,
-          aging: liveAging,
-          source: 'physical', 
-          matchStatus, 
-          expiryStatus 
-        }
+        return { ...r, hub: hubValue, aging: liveAging, source: 'physical', matchStatus, expiryStatus }
       })
 
       if (masterList.value.length > 0) {
@@ -372,11 +328,10 @@ createApp({
           const mCode = m.tracking_number || m
           const mHub = m.hub || 'KE-3PL-Flexcom'
           const liveAging = computeLiveAging(m.arrival_date, m.aging || 0)
-
           let expiryStatus = 'normal'
           if (liveAging >= 8 && liveAging <= 9) expiryStatus = 'urgent-red'
           else if (liveAging >= 10) expiryStatus = 'expired-return'
-
+          
           list.push({
             id: 'sys-' + mCode,
             code: mCode,
@@ -400,25 +355,21 @@ createApp({
         playAudioSignal('error')
         return false
       }
-
       const trimmed = code.trim()
       if (!trimmed) {
         setStatus('Please enter a valid tracking code.', 'error')
         playAudioSignal('error')
         return false
       }
-
       if (scannedCodesMap.value[trimmed.toUpperCase()]) {
         setStatus(`Error: Item "${trimmed}" has already been scanned!`, 'error')
         playAudioSignal('error')
         return false
       }
-
       const matchedMaster = masterList.value.find(m => String(m.tracking_number || m).trim().toUpperCase() === trimmed.toUpperCase())
       const csvAging = matchedMaster?.aging ?? 0
       const arrivalAnchor = matchedMaster?.arrival_date || new Date(Date.now() - csvAging * 86400000).toISOString()
-
-      // Step 1: Generate guaranteed unique UUIDv4 for each scan item
+      
       const newRow = {
         id: uid(),
         code: trimmed,
@@ -430,9 +381,7 @@ createApp({
         matchStatus: matchedMaster ? 'matched' : 'unexpected',
         note: ''
       }
-
       syncToServer([newRow])
-
       setStatus(`Saved & Verified: ${trimmed}`, 'success')
       playAudioSignal('success')
       return true
@@ -488,20 +437,13 @@ createApp({
         .split('\n')
         .map(l => l.trim())
         .filter(l => l.length > 0)
-      
       masterList.value = lines.map(line => {
         const parts = line.split(',')
         const trNum = parts[0]?.trim() || line
         const hubVal = parts[1]?.trim() || 'KE-3PL-Flexcom'
         const agingVal = Number(parts[2]?.trim() || 0)
         const arrivalIso = new Date(Date.now() - agingVal * 86400000).toISOString()
-
-        return {
-          tracking_number: trNum,
-          hub: hubVal,
-          aging: agingVal,
-          arrival_date: arrivalIso
-        }
+        return { tracking_number: trNum, hub: hubVal, aging: agingVal, arrival_date: arrivalIso }
       })
       masterInputText.value = ''
       setStatus(`Master list loaded with ${masterList.value.length} items.`, 'success')
@@ -539,7 +481,6 @@ createApp({
       if (text === lastCode && t - lastTime < 2500) return
       lastCode = text
       lastTime = t
-
       const success = addRow(text, 'scanned')
       if (success) {
         lastScan.value = text
@@ -558,27 +499,12 @@ createApp({
     }
 
     return {
-      currentStationId,
-      stationsList,
-      switchStation,
-      rows,
-      masterList,
-      settings,
-      unifiedRows,
-      missingItems,
-      mode,
-      openMode,
-      closeMode,
-      typed,
-      saveTyped,
-      lastScan,
-      sessionCount,
-      statusMsg,
-      masterInputText,
-      loadMasterListFromText,
-      clearMasterList,
-      isOnline,
-      isSyncing
+      currentStationId, stationsList, switchStation,
+      rows, masterList, settings, unifiedRows, missingItems,
+      mode, openMode, closeMode, typed, saveTyped,
+      lastScan, sessionCount, statusMsg,
+      masterInputText, loadMasterListFromText, clearMasterList,
+      isOnline, isSyncing
     }
   },
   template: `
@@ -590,14 +516,10 @@ createApp({
             <h1 class="text-lg font-bold tracking-tight">📦 Station Portal</h1>
             <span :class="isOnline ? 'bg-emerald-500' : 'bg-amber-500'" class="w-2.5 h-2.5 rounded-full inline-block" :title="isOnline ? 'Online' : 'Offline Mode'"></span>
           </div>
-          
+
           <!-- Station Switcher Dropdown -->
           <div class="w-full sm:w-auto">
-            <select 
-              v-model="currentStationId" 
-              @change="switchStation(currentStationId)" 
-              class="w-full sm:w-64 bg-teal-800 text-white border border-teal-600 rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-white transition cursor-pointer"
-            >
+            <select v-model="currentStationId" @change="switchStation(currentStationId)" class="w-full sm:w-64 bg-teal-800 text-white border border-teal-600 rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-white transition cursor-pointer">
               <option value="" disabled>Select Station</option>
               <option v-for="s in stationsList" :value="s.id" :key="s.id">
                 {{ s.unique_identifier }}
@@ -613,36 +535,19 @@ createApp({
       </header>
 
       <main class="max-w-6xl mx-auto px-4 mt-6">
-        <!-- Tools Action Bar -->
-        <div class="grid grid-cols-3 gap-3 mb-6">
-          <button 
-            @click="openMode('camera')" 
-            :class="mode === 'camera' ? 'border-teal-600 bg-teal-50 ring-2 ring-teal-500/20' : 'border-slate-200 bg-white hover:border-teal-400 hover:bg-slate-50'"
-            class="flex flex-col items-center justify-center p-3 border rounded-xl shadow-sm transition cursor-pointer"
-          >
+        <!-- Tools Action Bar (2 Columns - nicely spaced) -->
+        <div class="grid grid-cols-2 gap-4 mb-6">
+          <button @click="openMode('camera')" :class="mode === 'camera' ? 'border-teal-600 bg-teal-50 ring-2 ring-teal-500/20' : 'border-slate-200 bg-white hover:border-teal-400 hover:bg-slate-50'" class="flex flex-col items-center justify-center p-4 border rounded-xl shadow-sm transition cursor-pointer">
             <span class="text-2xl mb-1">📷</span>
             <span class="text-xs font-semibold text-slate-700">Camera</span>
           </button>
-
-          <button 
-            @click="openMode('keyboard')" 
-            :class="[
-              mode === 'keyboard' ? 'border-teal-600 bg-teal-50 ring-2 ring-teal-500/20' : 'border-slate-200 bg-white hover:border-teal-400 hover:bg-slate-50',
-              settings.disableManual ? 'opacity-40 cursor-not-allowed bg-slate-100' : ''
-            ]"
-            class="flex flex-col items-center justify-center p-3 border rounded-xl shadow-sm transition cursor-pointer"
-          >
+          
+          <button @click="openMode('keyboard')" :class="[
+            mode === 'keyboard' ? 'border-teal-600 bg-teal-50 ring-2 ring-teal-500/20' : 'border-slate-200 bg-white hover:border-teal-400 hover:bg-slate-50',
+            settings.disableManual ? 'opacity-40 cursor-not-allowed bg-slate-100' : ''
+          ]" class="flex flex-col items-center justify-center p-4 border rounded-xl shadow-sm transition cursor-pointer">
             <span class="text-2xl mb-1">⌨️</span>
             <span class="text-xs font-semibold text-slate-700">Manual</span>
-          </button>
-
-          <button 
-            @click="openMode('admin')" 
-            :class="mode === 'admin' ? 'border-teal-600 bg-teal-50 ring-2 ring-teal-500/20' : 'border-slate-200 bg-white hover:border-teal-400 hover:bg-slate-50'"
-            class="flex flex-col items-center justify-center p-3 border rounded-xl shadow-sm transition cursor-pointer"
-          >
-            <span class="text-2xl mb-1">⚙️</span>
-            <span class="text-xs font-semibold text-slate-700">Admin Panel</span>
           </button>
         </div>
 
@@ -663,37 +568,10 @@ createApp({
         <!-- Keyboard Panel -->
         <section v-if="mode === 'keyboard'" class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6">
           <div class="flex gap-2">
-            <input 
-              v-model="typed" 
-              placeholder="Enter tracking number..." 
-              @keydown.enter.prevent="saveTyped"
-              autofocus
-              class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-            />
+            <input v-model="typed" placeholder="Enter tracking number..." @keydown.enter.prevent="saveTyped" autofocus class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
             <button @click="saveTyped" :disabled="!typed.trim()" class="px-4 py-2 bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white text-sm font-medium rounded-lg shadow-sm transition cursor-pointer">Save</button>
             <button @click="closeMode" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition cursor-pointer">Close</button>
           </div>
-        </section>
-
-        <!-- Admin Panel -->
-        <section v-if="mode === 'admin'" class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 mb-6 space-y-4">
-          <h3 class="font-bold text-slate-800 text-base">Admin System Controls</h3>
-          
-          <div class="flex items-center gap-2">
-            <input type="checkbox" v-model="settings.disableManual" id="lockManual" class="rounded text-teal-600 focus:ring-teal-500 w-4 h-4 cursor-pointer" />
-            <label for="lockManual" class="text-sm font-medium text-slate-700 cursor-pointer">Disable Manual Type-in for Normal Users</label>
-          </div>
-
-          <div class="space-y-2">
-            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">Paste Master List (Format: tracking_number, hub, aging)</label>
-            <textarea v-model="masterInputText" rows="4" placeholder="JE-VAR-366, KE-3PL-Flexcom, 4" class="w-full p-3 font-mono text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"></textarea>
-            <div class="flex gap-2 pt-1">
-              <button @click="loadMasterListFromText" :disabled="!masterInputText.trim()" class="px-4 py-2 bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white text-sm font-medium rounded-lg shadow-sm transition cursor-pointer">📥 Import Master List</button>
-              <button @click="clearMasterList" v-if="masterList.length" class="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 text-sm font-medium rounded-lg transition border border-red-200 cursor-pointer">🗑️ Clear System List</button>
-              <button @click="closeMode" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition cursor-pointer">Close Admin</button>
-            </div>
-          </div>
-          <p class="text-xs text-slate-500">System Master List contains <b class="text-slate-800">{{ masterList.length }}</b> expected packages.</p>
         </section>
 
         <!-- Reconciliation Data Table Card -->
@@ -713,38 +591,25 @@ createApp({
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100 text-sm">
-                <tr 
-                  v-for="(r, i) in unifiedRows" 
-                  :key="r.id"
-                  :class="{
-                    'bg-rose-100 border-l-4 border-rose-600 text-rose-900 font-semibold animate-pulse': r.aging >= 8 && r.aging <= 9,
-                    'bg-red-200 border-l-4 border-red-700 font-bold': r.aging >= 10,
-                    'bg-emerald-50/50': r.matchStatus === 'matched' && r.aging < 8,
-                    'bg-amber-50/50': r.matchStatus === 'unexpected' && r.aging < 8,
-                    'bg-rose-50/60': r.matchStatus === 'missing' && r.aging < 8
-                  }"
-                  class="transition hover:bg-slate-50/80"
-                >
+                <tr v-for="(r, i) in unifiedRows" :key="r.id" :class="{
+                  'bg-rose-100 border-l-4 border-rose-600 text-rose-900 font-semibold animate-pulse': r.aging >= 8 && r.aging <= 9,
+                  'bg-red-200 border-l-4 border-red-700 font-bold': r.aging >= 10,
+                  'bg-emerald-50/50': r.matchStatus === 'matched' && r.aging < 8,
+                  'bg-amber-50/50': r.matchStatus === 'unexpected' && r.aging < 8,
+                  'bg-rose-50/60': r.matchStatus === 'missing' && r.aging < 8
+                }" class="transition hover:bg-slate-50/80">
                   <td class="p-3 text-center text-xs font-semibold text-slate-400">{{ unifiedRows.length - i }}</td>
-                  
                   <td class="p-3 font-mono">
                     <span class="text-slate-800 font-semibold">{{ r.code }}</span>
                   </td>
-
-                  <td class="p-3 text-xs font-medium text-slate-600">
-                    {{ r.hub }}
-                  </td>
-
+                  <td class="p-3 text-xs font-medium text-slate-600">{{ r.hub }}</td>
                   <td class="p-3">
                     <span class="px-2.5 py-1 rounded text-xs font-bold inline-block" :class="{
                       'bg-rose-200 text-rose-900 animate-pulse': r.aging >= 8 && r.aging <= 9,
                       'bg-red-300 text-red-950': r.aging >= 10,
                       'bg-slate-200 text-slate-700': r.aging < 8
-                    }">
-                      {{ r.aging }} Days
-                    </span>
+                    }">{{ r.aging }} Days</span>
                   </td>
-
                   <td class="p-3">
                     <span :class="{
                       'bg-emerald-100 text-emerald-800': r.matchStatus === 'matched',
@@ -755,26 +620,21 @@ createApp({
                       {{ r.matchStatus === 'matched' ? '✓ Matched' : r.matchStatus === 'missing' ? '❌ Missing' : r.matchStatus === 'unexpected' ? '⚠️ Unexpected' : 'Unchecked' }}
                     </span>
                   </td>
-
                   <td class="p-3 text-xs text-slate-500">{{ r.ts }}</td>
-                  
                   <td class="p-3">
                     <span :class="r.method === 'scanned' ? 'bg-sky-100 text-sky-800' : r.method === 'typed' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'" class="px-2 py-0.5 rounded-full text-[11px] font-semibold capitalize">
                       {{ r.method }}
                     </span>
                   </td>
-
                   <td class="p-3">
                     <span class="text-xs text-slate-600">{{ r.note || '-' }}</span>
                   </td>
                 </tr>
-
                 <tr v-if="!currentStationId">
                   <td colspan="8" class="p-8 text-center text-amber-600 text-sm font-medium">⚠️ Please select a station from the dropdown above to view records and start scanning.</td>
                 </tr>
-
                 <tr v-else-if="!unifiedRows.length">
-                  <td colspan="8" class="p-8 text-center text-slate-400 text-sm">No packages recorded or loaded in master list for this station. Use ⚙️ Admin Panel or 📷 Camera.</td>
+                  <td colspan="8" class="p-8 text-center text-slate-400 text-sm">No packages recorded or loaded in master list for this station. Use 📷 Camera or ⌨️ Manual.</td>
                 </tr>
               </tbody>
             </table>
