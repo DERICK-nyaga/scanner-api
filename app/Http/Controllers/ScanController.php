@@ -2,51 +2,57 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Scan;
+use App\Models\ScanLog;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class ScanController extends Controller
 {
-    public function index()
+
+    public function index(Request $request)
     {
-        // Return latest scans for real-time viewing across devices
-        return Scan::orderByDesc('id')->take(500)->get();
+        $stationId = $request->query('station_id');
+        
+        if (!$stationId) {
+            return response()->json([], 200); // Return empty array instead of 400 error
+        }
+
+        return ScanLog::where('station_id', $stationId)
+            ->orderByDesc('id')
+            ->take(500)
+            ->get()
+            ->map(fn($log) => [
+                'id'           => $log->id,
+                'client_id'    => 'sys-' . $log->tracking_number,
+                'code'         => $log->tracking_number,
+                'scanned_at'   => $log->scanned_at ? \Carbon\Carbon::parse($log->scanned_at)->format('Y-m-d H:i:s') : now(),
+                'method'       => $log->method,
+                'match_status' => $log->match_status,
+                'note'         => $log->note,
+            ]);
     }
 
-    public function bulk(Request $request)
+    public function export(Request $request)
     {
-        $data = $request->validate([
-            'scans'              => 'required|array|max:5000',
-            'scans.*.client_id'  => 'required|string|max:64',
-            'scans.*.code'       => 'required|string|max:255',
-            'scans.*.scanned_at' => 'required|string|max:32',
-            'scans.*.method'     => 'required|in:scanned,typed',
-            'scans.*.note'       => 'nullable|string|max:255',
-        ]);
+        $stationId = $request->query('station_id', 1);
         
-        $now = now();
-        $rows = array_map(fn ($s) => $s + ['note' => $s['note'] ?? '', 'created_at' => $now, 'updated_at' => $now], $data['scans']);
-        
-        DB::transaction(fn () => Scan::upsert($rows, ['client_id'], ['code', 'scanned_at', 'method', 'note', 'updated_at']));
-        
-        return ['synced' => count($rows)];
-    }
-
-    // NOTE: destroy() method has been permanently removed to ensure zero deletion privileges.
-
-    public function export()
-    {
-        $counts = Scan::select('code', DB::raw('count(*) c'))->groupBy('code')->pluck('c', 'code');
-        return response()->streamDownload(function () use ($counts) {
+        return response()->streamDownload(function () use ($stationId) {
             $out = fopen('php://output', 'w');
+            // Add UTF-8 BOM for proper Excel compatibility
             fwrite($out, "\xEF\xBB\xBF");
-            fputcsv($out, ['Tracking Number', 'Timestamp', 'Method', 'Duplicate', 'Notes']);
-            Scan::orderByDesc('id')->cursor()->each(fn ($s) => fputcsv($out, [
-                $s->code, $s->scanned_at, $s->method,
-                ($counts[$s->code] ?? 1) > 1 ? 'DUPLICATE x' . $counts[$s->code] : 'Unique', $s->note,
-            ]));
+            fputcsv($out, ['Tracking Number', 'Timestamp', 'Method', 'Match Status', 'Notes']);
+            
+            ScanLog::where('station_id', $stationId)
+                ->orderByDesc('id')
+                ->cursor()
+                ->each(fn ($s) => fputcsv($out, [
+                    $s->tracking_number, 
+                    $s->scanned_at?->format('Y-m-d H:i:s') ?? $s->created_at, 
+                    $s->method, 
+                    $s->match_status, 
+                    $s->note,
+                ]));
+                
             fclose($out);
-        }, 'scans.csv', ['Content-Type' => 'text/csv']);
+        }, "station-{$stationId}-scans.csv", ['Content-Type' => 'text/csv']);
     }
 }

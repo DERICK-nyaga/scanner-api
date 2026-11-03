@@ -42,12 +42,10 @@ function playAudioSignal(type) {
   } catch (e) {}
 }
 
-const ROWS_KEY = 'scanner-rows-v5'
+// STORAGE KEYS: Separate master cache from the offline sync outbox queue
+const OUTBOX_KEY = 'scanner-offline-outbox-v1'
 const MASTER_KEY = 'scanner-master-list-v4'
 const SETTINGS_KEY = 'scanner-settings'
-
-let savedRows = []
-try { savedRows = JSON.parse(localStorage.getItem(ROWS_KEY)) || [] } catch {}
 
 let savedMaster = []
 try { savedMaster = JSON.parse(localStorage.getItem(MASTER_KEY)) || [] } catch {}
@@ -57,11 +55,12 @@ try { savedSettings = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || { disabl
 
 createApp({
   setup() {
-    const rows = ref(savedRows)
+    // rows represents the unified state fetched straight from the server API
+    const rows = ref([])
     const masterList = ref(savedMaster) 
     const settings = ref(savedSettings)
     
-    const currentStationId = ref(localStorage.getItem('active_station_id') || '1')
+    const currentStationId = ref(localStorage.getItem('active_station_id') || '')
     const stationsList = ref([])
 
     const mode = ref(null) 
@@ -70,10 +69,23 @@ createApp({
     const sessionCount = ref(0)
     const statusMsg = ref({ text: '', type: '' })
     const masterInputText = ref('')
+    const isOnline = ref(navigator.onLine)
+    const isSyncing = ref(false)
 
     let scanner = null
     let lastCode = '', lastTime = 0
     let pollInterval = null
+
+    // Track online/offline status changes dynamically
+    window.addEventListener('online', () => {
+      isOnline.value = true
+      setStatus('Connection re-established. Flushing offline queue...', 'success')
+      flushOutbox()
+    })
+    window.addEventListener('offline', () => {
+      isOnline.value = false
+      setStatus('Network offline. Scans will be saved locally and synced when online.', 'error')
+    })
 
     async function fetchStations() {
       try {
@@ -81,11 +93,14 @@ createApp({
         if (res.ok) {
           const data = await res.json()
           stationsList.value = data
-          if (data.length > 0) {
+          if (currentStationId.value) {
             const exists = data.some(s => String(s.id) === String(currentStationId.value))
-            if (!exists) {
-              currentStationId.value = data[0].id
-              localStorage.setItem('active_station_id', data[0].id)
+            if (exists) {
+              await fetchServerScans()
+              await loadStationDetails(currentStationId.value)
+              flushOutbox() // Try flushing any pending offline scans on load
+            } else {
+              currentStationId.value = ''
             }
           }
         }
@@ -94,56 +109,92 @@ createApp({
       }
     }
 
+    // Step 2 & 3: Fetch clean server-side state (Server is Source of Truth)
     async function fetchServerScans() {
+      if (!currentStationId.value) return
       try {
-        const res = await fetch('/api/scans')
+        // Poll station details every sync cycle to catch admin security broadcasts live
+        const stationRes = await fetch(`/api/admin/stations/${currentStationId.value}/details`).catch(() => null)
+        if (stationRes && stationRes.ok) {
+          const stationData = await stationRes.json()
+          if (stationData.station && typeof stationData.station.disable_manual !== 'undefined') {
+            settings.value.disableManual = Boolean(stationData.station.disable_manual)
+          }
+        }
+
+        const res = await fetch(`/api/scans?station_id=${currentStationId.value}`)
         if (res.ok) {
           const data = await res.json()
           const scanItems = Array.isArray(data) ? data : (data.data || [])
           
-          if (scanItems.length > 0) {
-            // Merge server scans while preserving local rows structure to prevent disappearing UI state
-            const serverRowsMap = new Map()
-            scanItems.forEach(item => {
-              const code = String(item.code || '').trim().toUpperCase()
-              if (code) {
-                serverRowsMap.set(code, {
-                  id: item.client_id || item.id || uid(),
-                  code: item.code,
-                  hub: item.hub || 'KE-3PL-Flexcom',
-                  aging: item.aging || 0,
-                  arrival_date: item.arrival_date,
-                  ts: item.scanned_at || item.created_at || now(),
-                  method: item.method || 'scanned',
-                  note: item.note || ''
-                })
-              }
-            })
+          const serverRowsMap = new Map()
+          scanItems.forEach(item => {
+            const code = String(item.code || item.tracking_number || '').trim().toUpperCase()
+            if (code) {
+              serverRowsMap.set(code, {
+                id: item.client_id || item.id || uid(),
+                code: code,
+                hub: item.hub || 'KE-3PL-Flexcom',
+                aging: item.aging || 0,
+                arrival_date: item.arrival_date,
+                ts: item.scanned_at || item.created_at || now(),
+                method: item.method || 'scanned',
+                matchStatus: item.match_status || 'matched',
+                note: item.note || ''
+              })
+            }
+          })
 
-            // Combine with any local rows not yet overwritten
-            rows.value.forEach(r => {
-              const c = String(r.code || '').trim().toUpperCase()
-              if (c && !serverRowsMap.has(c)) {
-                serverRowsMap.set(c, r)
-              }
-            })
-
-            rows.value = Array.from(serverRowsMap.values())
-          }
+          rows.value = Array.from(serverRowsMap.values())
         }
       } catch (e) {
-        console.error('Failed to sync scans in real-time', e)
+        console.error('Failed to sync station scans from server', e)
       }
     }
 
+    // Outbox Queue Management Helpers
+    function getOutbox() {
+      try { return JSON.parse(localStorage.getItem(OUTBOX_KEY)) || [] } catch { return [] }
+    }
+
+    function saveOutbox(queue) {
+      try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(queue)) } catch {}
+    }
+
+    // Step 2: Push mutations via Outbox pattern with UUID handling
     async function syncToServer(payloadRows) {
+      if (!currentStationId.value) return
+
+      const outbox = getOutbox()
+      // Append new actions to local outbox queue flagged as pending
+      payloadRows.forEach(r => {
+        if (!outbox.some(item => item.id === r.id)) {
+          outbox.push({ station_id: currentStationId.value, ...r, synced: false })
+        }
+      })
+      saveOutbox(outbox)
+
+      if (!navigator.onLine) return // Skip network call if offline
+
+      await flushOutbox()
+    }
+
+    async function flushOutbox() {
+      if (!navigator.onLine || isSyncing.value) return
+      const outbox = getOutbox()
+      const pending = outbox.filter(item => !item.synced && String(item.station_id) === String(currentStationId.value))
+      
+      if (pending.length === 0) return
+
+      isSyncing.value = true
       try {
-        await fetch('/api/scans/bulk', {
+        const res = await fetch('/api/scans/bulk', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
           body: JSON.stringify({
-            scans: payloadRows.map(r => ({
-              client_id: r.id,
+            station_id: currentStationId.value,
+            scans: pending.map(r => ({
+              client_id: r.id, // Step 1: Pass stable UUIDv4 to backend API
               code: r.code,
               scanned_at: r.ts,
               method: r.method,
@@ -151,28 +202,47 @@ createApp({
             }))
           })
         })
+
+        if (res.ok) {
+          // Mark matching items as synced and clean outbox
+          const remaining = getOutbox().map(item => {
+            if (pending.some(p => p.id === item.id)) {
+              return { ...item, synced: true }
+            }
+            return item
+          }).filter(item => !item.synced) // Remove successfully synced records
+
+          saveOutbox(remaining)
+          await fetchServerScans() // Pull fresh server state after sync
+        }
       } catch (e) {
-        console.error('Background sync failed', e)
+        console.error('Outbox flush failed', e)
+      } finally {
+        isSyncing.value = false
       }
     }
 
     onMounted(() => {
       fetchStations()
-      fetchServerScans()
-      pollInterval = setInterval(fetchServerScans, 4000)
+      // 15-second background sync and poll interval
+      pollInterval = setInterval(() => {
+        if (currentStationId.value) {
+          fetchServerScans()
+          flushOutbox()
+        }
+      }, 15000)
     })
 
     onUnmounted(() => {
       if (pollInterval) clearInterval(pollInterval)
     })
 
-    async function switchStation(id) {
-      currentStationId.value = id
-      localStorage.setItem('active_station_id', id)
+    async function loadStationDetails(id) {
       try {
         const res = await fetch(`/api/admin/stations/${id}/details`)
         if (res.ok) {
           const data = await res.json()
+          
           masterList.value = (data.master_list || []).map(m => {
             const initialAging = Number(m.aging || 0)
             return {
@@ -180,17 +250,32 @@ createApp({
               arrival_date: m.arrival_date || new Date(Date.now() - initialAging * 86400000).toISOString()
             }
           })
-          setStatus(`Switched to station context successfully.`, 'success')
+
+          // Enforce server-side manual typing restriction securely
+          if (data.station && typeof data.station.disable_manual !== 'undefined') {
+            settings.value.disableManual = Boolean(data.station.disable_manual)
+          }
         }
       } catch (e) {
-        console.error('Failed to sync station details', e)
+        console.error('Failed to load station details', e)
       }
     }
 
-    watch(rows, () => {
-      try { localStorage.setItem(ROWS_KEY, JSON.stringify(rows.value)) } catch {}
-    }, { deep: true })
+    async function switchStation(id) {
+      if (!id) return
+      currentStationId.value = id
+      localStorage.setItem('active_station_id', id)
+      
+      rows.value = [] 
+      masterList.value = []
+      
+      await loadStationDetails(id)
+      await fetchServerScans()
+      flushOutbox()
+      setStatus(`Switched to station context successfully.`, 'success')
+    }
 
+    // Only watch settings and master list for local storage caching (NOT rows)
     watch(masterList, () => {
       try { localStorage.setItem(MASTER_KEY, JSON.stringify(masterList.value)) } catch {}
     }, { deep: true })
@@ -208,6 +293,13 @@ createApp({
       rows.value.forEach(r => {
         const c = String(r.code || '').trim().toUpperCase()
         if (c) map[c] = (map[c] || 0) + 1
+      })
+      // Also check local pending outbox items so offline scans trigger duplicate warnings immediately
+      getOutbox().forEach(r => {
+        if (String(r.station_id) === String(currentStationId.value)) {
+          const c = String(r.code || '').trim().toUpperCase()
+          if (c) map[c] = (map[c] || 0) + 1
+        }
       })
       return map
     })
@@ -229,9 +321,16 @@ createApp({
     }
 
     const unifiedRows = computed(() => {
-      const list = rows.value.map(r => {
+      // Combine server rows with any pending offline outbox items so UI updates instantly
+      const localPending = getOutbox().filter(item => String(item.station_id) === String(currentStationId.value))
+      const combinedMap = new Map()
+
+      rows.value.forEach(r => combinedMap.set(r.code, r))
+      localPending.forEach(r => combinedMap.set(r.code, { ...r, matchStatus: 'untracked' }))
+
+      const list = Array.from(combinedMap.values()).map(r => {
         const cleanCode = String(r.code || '').trim().toUpperCase()
-        let matchStatus = 'untracked'
+        let matchStatus = r.matchStatus || 'untracked'
         let matchedMasterItem = null
 
         if (masterList.value.length > 0) {
@@ -239,7 +338,11 @@ createApp({
             const mCode = String(m.tracking_number || m).trim().toUpperCase()
             return mCode === cleanCode
           })
-          matchStatus = matchedMasterItem ? 'matched' : 'unexpected'
+          if (matchedMasterItem && matchStatus === 'untracked') {
+            matchStatus = 'matched'
+          } else if (!matchedMasterItem && matchStatus === 'untracked') {
+            matchStatus = 'unexpected'
+          }
         }
 
         const arrivalAnchor = matchedMasterItem?.arrival_date || r.arrival_date || new Date().toISOString()
@@ -292,6 +395,12 @@ createApp({
     })
 
     function addRow(code, method) {
+      if (!currentStationId.value) {
+        setStatus('Please select a station from the top dropdown first!', 'error')
+        playAudioSignal('error')
+        return false
+      }
+
       const trimmed = code.trim()
       if (!trimmed) {
         setStatus('Please enter a valid tracking code.', 'error')
@@ -309,6 +418,7 @@ createApp({
       const csvAging = matchedMaster?.aging ?? 0
       const arrivalAnchor = matchedMaster?.arrival_date || new Date(Date.now() - csvAging * 86400000).toISOString()
 
+      // Step 1: Generate guaranteed unique UUIDv4 for each scan item
       const newRow = {
         id: uid(),
         code: trimmed,
@@ -317,10 +427,10 @@ createApp({
         arrival_date: arrivalAnchor,
         ts: now(),
         method,
+        matchStatus: matchedMaster ? 'matched' : 'unexpected',
         note: ''
       }
 
-      rows.value.unshift(newRow)
       syncToServer([newRow])
 
       setStatus(`Saved & Verified: ${trimmed}`, 'success')
@@ -329,6 +439,11 @@ createApp({
     }
 
     async function openMode(m) {
+      if (!currentStationId.value) {
+        setStatus('Please select a station before scanning.', 'error')
+        playAudioSignal('error')
+        return
+      }
       if (m === 'keyboard' && settings.value.disableManual) {
         setStatus('Manual typing has been disabled by administrator.', 'error')
         playAudioSignal('error')
@@ -365,6 +480,10 @@ createApp({
     }
 
     function loadMasterListFromText() {
+      if (!currentStationId.value) {
+        setStatus('Please select a station first.', 'error')
+        return
+      }
       const lines = masterInputText.value
         .split('\n')
         .map(l => l.trim())
@@ -457,7 +576,9 @@ createApp({
       statusMsg,
       masterInputText,
       loadMasterListFromText,
-      clearMasterList
+      clearMasterList,
+      isOnline,
+      isSyncing
     }
   },
   template: `
@@ -465,7 +586,10 @@ createApp({
       <!-- Top Header -->
       <header class="bg-teal-700 text-white shadow-md">
         <div class="max-w-6xl mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center gap-3">
-          <h1 class="text-lg font-bold tracking-tight">📦 Station Portal (Realtime)</h1>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg font-bold tracking-tight">📦 Station Portal</h1>
+            <span :class="isOnline ? 'bg-emerald-500' : 'bg-amber-500'" class="w-2.5 h-2.5 rounded-full inline-block" :title="isOnline ? 'Online' : 'Offline Mode'"></span>
+          </div>
           
           <!-- Station Switcher Dropdown -->
           <div class="w-full sm:w-auto">
@@ -474,6 +598,7 @@ createApp({
               @change="switchStation(currentStationId)" 
               class="w-full sm:w-64 bg-teal-800 text-white border border-teal-600 rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-white transition cursor-pointer"
             >
+              <option value="" disabled>Select Station</option>
               <option v-for="s in stationsList" :value="s.id" :key="s.id">
                 {{ s.unique_identifier }}
               </option>
@@ -481,7 +606,7 @@ createApp({
           </div>
 
           <div class="flex items-center gap-2">
-            <span class="bg-teal-800/80 text-teal-100 px-3 py-1 rounded-full text-xs font-semibold">Scanned: {{ rows.length }}</span>
+            <span class="bg-teal-800/80 text-teal-100 px-3 py-1 rounded-full text-xs font-semibold">Scanned: {{ unifiedRows.filter(r => r.source === 'physical').length }}</span>
             <span v-if="masterList.length" class="bg-teal-800/80 text-teal-100 px-3 py-1 rounded-full text-xs font-semibold">Expected: {{ masterList.length }}</span>
           </div>
         </div>
@@ -644,8 +769,12 @@ createApp({
                   </td>
                 </tr>
 
-                <tr v-if="!unifiedRows.length">
-                  <td colspan="8" class="p-8 text-center text-slate-400 text-sm">No packages recorded or loaded in master list. Use ⚙️ Admin Panel or 📷 Camera.</td>
+                <tr v-if="!currentStationId">
+                  <td colspan="8" class="p-8 text-center text-amber-600 text-sm font-medium">⚠️ Please select a station from the dropdown above to view records and start scanning.</td>
+                </tr>
+
+                <tr v-else-if="!unifiedRows.length">
+                  <td colspan="8" class="p-8 text-center text-slate-400 text-sm">No packages recorded or loaded in master list for this station. Use ⚙️ Admin Panel or 📷 Camera.</td>
                 </tr>
               </tbody>
             </table>

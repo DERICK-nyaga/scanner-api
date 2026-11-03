@@ -21,7 +21,11 @@ Route::prefix('admin')->group(function () {
     // Station CRUD & Data Details
     Route::get('/stations', [AdminController::class, 'indexStations']);
     Route::post('/stations', [AdminController::class, 'storeStation']);
-    Route::get('/stations/{stationId}/details', [AdminController::class, 'getStationData']);
+    Route::get('/stations/{stationId}/details', [AdminController::class, 'getStationDetails']);
+    
+    // --> ADD THIS ROUTE FOR BATCH/GLOBAL SETTINGS <--
+    Route::put('/stations/settings', [AdminController::class, 'updateStationSettings']);
+    
     Route::put('/stations/{id}', [AdminController::class, 'updateStation']);
     Route::delete('/stations/{id}', [AdminController::class, 'destroyStation']);
     

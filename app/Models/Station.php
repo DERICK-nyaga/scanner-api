@@ -17,12 +17,12 @@ class Station extends Authenticatable {
         'password', 
         'role', 
         'permissions', 
-        'disable_manual_typing'
+        'disable_manual'
     ];
 
     protected $casts = [
         'permissions' => 'array',
-        'disable_manual_typing' => 'boolean',
+        'disable_manual' => 'boolean',
     ];
 
     public function masterLists() {

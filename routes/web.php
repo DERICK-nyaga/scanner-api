@@ -59,3 +59,5 @@ Route::prefix('admin')->group(function () {
     Route::post('/master-upload', [AdminController::class, 'uploadMasterListForm'])->name('admin.master.upload');
     Route::post('/publish-audit', [AdminController::class, 'publishAuditLogForm'])->name('admin.audit.publish');
 });
+
+Route::put('/stations/{id}/settings', [AdminController::class, 'updateStationSettings']);

@@ -140,7 +140,7 @@ class AdminController extends Controller {
     }
 
     // Fetch station details including its uploaded master list items
-    public function getStationData($stationId) {
+    public function getStationDetails($stationId) {
         $station = Station::with('masterLists')->findOrFail($stationId);
 
         // Map master list items to match the expected front-end structure
@@ -156,6 +156,31 @@ class AdminController extends Controller {
         return response()->json([
             'station'     => $station,
             'master_list' => $masterList,
+        ]);
+    }
+
+    public function updateStationSettings(Request $request)
+    {
+        $request->validate([
+            'station_ids' => 'required',
+            'disable_manual' => 'required|boolean'
+        ]);
+
+        $stationIds = $request->input('station_ids');
+        $disableManual = $request->input('disable_manual');
+
+        if ($stationIds === 'all' || (is_array($stationIds) && in_array('all', $stationIds))) {
+            Station::query()->update(['disable_manual' => $disableManual]);
+            $count = Station::count();
+        } else {
+            $ids = is_array($stationIds) ? $stationIds : [$stationIds];
+            Station::whereIn('id', $ids)->update(['disable_manual' => $disableManual]);
+            $count = count($ids);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => "Security settings successfully updated for {$count} station(s)."
         ]);
     }
 
