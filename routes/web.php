@@ -35,11 +35,6 @@ Route::prefix('admin')->group(function () {
     })->name('admin.audit.logs');
 
     // Delivery Notes & Waybills View
-    Route::get('/delivery-notes', function () {
-        $stations = Station::all();
-        $deliveryNotes = DeliveryNote::with('station')->latest()->get();
-        return view('admin.delivery_notes', compact('deliveryNotes', 'stations'));
-    })->name('admin.delivery-notes.index');
     Route::get('/delivery-notes', [AdminController::class, 'indexDeliveryNotes'])->name('admin.delivery-notes.index');
     Route::post('/delivery-notes', [AdminController::class, 'storeDeliveryNote'])->name('admin.delivery-notes.store');
 
@@ -58,6 +53,11 @@ Route::prefix('admin')->group(function () {
     // Form Action Endpoints
     Route::post('/master-upload', [AdminController::class, 'uploadMasterListForm'])->name('admin.master.upload');
     Route::post('/publish-audit', [AdminController::class, 'publishAuditLogForm'])->name('admin.audit.publish');
+    
+    // Historical Master Lists & Scan Logs Web Views
+    Route::get('/historical-master-lists', [AdminController::class, 'indexHistoricalMasterLists'])->name('admin.historical.master');
+    Route::get('/scan-logs', [AdminController::class, 'indexScanLogs'])->name('admin.scan.logs');
+    Route::post('/save-batch', [AdminController::class, 'saveAndArchiveBatchForm'])->name('admin.batch.save');
 });
 
 Route::put('/stations/{id}/settings', [AdminController::class, 'updateStationSettings']);

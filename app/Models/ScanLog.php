@@ -17,10 +17,12 @@ class ScanLog extends Model {
         'method',
         'note',
         'match_status',
+        'is_archived', // Added for batch archiving
     ];
 
     protected $casts = [
-        'scanned_at' => 'datetime',
+        'scanned_at'  => 'datetime',
+        'is_archived' => 'boolean',
     ];
 
     public function station() {

@@ -1,4 +1,5 @@
 {
+  "id": "/app/",
   "name": "Station Portal & Scanner",
   "short_name": "Scanner",
   "start_url": "/app/",

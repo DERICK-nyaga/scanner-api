@@ -9,15 +9,27 @@ use App\Models\SmsNotification;
 use App\Models\ReturnedPackage;
 use App\Models\ReturnPickup;
 use Illuminate\Http\Request;
+use App\Models\ScanLog;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Mail;
 use App\Models\DeliveryNote;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Auth;
 
 class AdminController extends Controller {
 
+    public function index(Request $request)
+    {
+        $stationId = $request->input('station_id');
+        
+        $scans = ScanLog::where('station_id', $stationId)
+            ->where('is_archived', false)
+            ->latest()
+            ->get();
 
-    // Render Delivery Notes Management View
+        return response()->json($scans);
+    }
+
     public function indexDeliveryNotes()
     {
         $stations = Station::all();
@@ -25,17 +37,15 @@ class AdminController extends Controller {
         
         return view('admin.delivery_notes', compact('deliveryNotes', 'stations'));
     }
-    // Store Uploaded Delivery Note / Waybill
+
     public function storeDeliveryNote(Request $request)
     {
         $request->validate([
             'station_id'    => 'required|exists:stations,id',
-            'delivery_note' => 'required|mimes:pdf,jpg,jpeg,png|max:5120', // Max 5MB
+            'delivery_note' => 'required|mimes:pdf,jpg,jpeg,png|max:5120',
         ]);
 
         $file = $request->file('delivery_note');
-        
-        // Store the file in storage/app/public/delivery_notes
         $path = $file->store('delivery_notes', 'public');
 
         DeliveryNote::create([
@@ -47,9 +57,6 @@ class AdminController extends Controller {
         return back()->with('success', 'Delivery note/waybill uploaded successfully.');
     }
 
-    /**
-     * Generate secure OTP for agent package return pickups.
-     */
     public function createReturnPickup(Request $request, $returnedPackageId) {
         $validated = $request->validate([
             'agent_name' => 'required|string',
@@ -57,7 +64,6 @@ class AdminController extends Controller {
             'agent_id_details' => 'required|string',
         ]);
 
-        // Generate 6-digit secure OTP
         $otpCode = rand(100000, 999999);
 
         $pickup = ReturnPickup::create([
@@ -69,7 +75,6 @@ class AdminController extends Controller {
             'otp_verified' => false,
         ]);
 
-        // Send OTP to agent phone & admin/station user notification log
         SmsNotification::create([
             'station_id' => 1,
             'recipient_phone' => $validated['agent_phone'],
@@ -83,9 +88,6 @@ class AdminController extends Controller {
         ]);
     }
 
-    /**
-     * Verify agent OTP to complete return handover.
-     */
     public function verifyReturnOtp(Request $request, $pickupId) {
         $request->validate(['otp_code' => 'required|digits:6']);
 
@@ -93,8 +95,6 @@ class AdminController extends Controller {
 
         if ($pickup->otp_code === $request->otp_code) {
             $pickup->update(['otp_verified' => true]);
-            
-            // Update package status to returned/dispatched
             $pickup->returnedPackage()->update(['status' => 'Returned to Jumia Network']);
 
             return response()->json([
@@ -105,16 +105,12 @@ class AdminController extends Controller {
         return response()->json(['message' => 'Invalid OTP code provided.'], 400);
     }
 
-    /**
-     * Process and dispatch automated SMS reminders for packages nearing expiration (Day 8/9 check).
-     */
     public function processCustomerSmsReminders(Request $request, $stationId) {
         $station = Station::with('masterLists')->findOrFail($stationId);
         
         $sentCount = 0;
         foreach ($station->masterLists as $item) {
             if (!empty($item->customer_phone)) {
-                // Check days remaining until expiration (Day 8/9 check)
                 $daysRemaining = now()->diffInDays($item->expiration_date, false);
                 
                 if ($daysRemaining <= 2 && $daysRemaining >= 0) {
@@ -134,16 +130,15 @@ class AdminController extends Controller {
         return back()->with('success', "Successfully dispatched {$sentCount} automated SMS reminders to customers.");
     }
 
-    // Fetch all stations for the frontend dropdown switcher
     public function indexStations() {
         return response()->json(Station::withCount(['masterLists', 'scanLogs'])->get());
     }
 
-    // Fetch station details including its uploaded master list items
     public function getStationDetails($stationId) {
-        $station = Station::with('masterLists')->findOrFail($stationId);
+        $station = Station::with(['masterLists' => function($query) {
+            $query->where('is_active', true);
+        }])->findOrFail($stationId);
 
-        // Map master list items to match the expected front-end structure
         $masterList = $station->masterLists->map(function ($item) {
             return [
                 'tracking_number' => $item->tracking_number,
@@ -184,43 +179,143 @@ class AdminController extends Controller {
         ]);
     }
 
-    // Upload master list tied specifically to the target station
     public function uploadMasterList(Request $request, $stationId) {
         $request->validate(['file' => 'required|mimes:csv,txt']);
         
-        $station = Station::findOrFail($stationId);
-        $path = $request->file('file')->getRealPath();
-        $file = fopen($path, 'r');
-        $header = fgetcsv($file); // Expected headers: Tracking #, Hub, Aging
-
-        $count = 0;
-        while (($row = fgetcsv($file)) !== FALSE) {
-            $trackingNumber = trim($row[0] ?? '');
-            $hub = trim($row[1] ?? '');
-            $agingDays = intval($row[2] ?? 0); // Exact aging from CSV (e.g., 4)
-
-            if (empty($trackingNumber)) continue;
-
-            // Backdate arrival_date so aging continues counting forward dynamically
-            $arrivalDate = now()->subDays($agingDays);
-
-            MasterList::updateOrCreate(
-                ['station_id' => $station->id, 'tracking_number' => $trackingNumber],
-                [
-                    'hub'             => $hub,
-                    'aging'           => $agingDays,
-                    'arrival_date'    => $arrivalDate,
-                    'expiration_date' => $arrivalDate->copy()->addDays(10), // 10-day total limit
-                ]
-            );
-            $count++;
-        }
-        fclose($file);
-
-        return back()->with('success', "Successfully imported {$count} records. Aging values initialized from CSV.");
+        return $this->processMasterListUpload($request, $stationId, false);
     }
 
-    // Create a new station account (e.g. KE-3PL-Flexcom Cheptiret-Station)
+    public function getMasterListItems(Request $request, $stationId)
+    {
+        $masterList = MasterList::where('station_id', $stationId)
+            ->where('is_active', true)
+            ->latest()
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'master_list' => $masterList
+        ]);
+    }
+
+    public function clearMasterList(Request $request, $stationId)
+    {
+        // 1. Deactivate active master list items
+        MasterList::where('station_id', $stationId)
+            ->where('is_active', true)
+            ->update(['is_active' => false]);
+
+        // 2. Archive scan logs for this station as well
+        ScanLog::where('station_id', $stationId)
+            ->where('is_archived', false)
+            ->update(['is_archived' => true]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Master list table and active scans reset to blank. Records archived safely.'
+        ]);
+    }
+
+    public function indexHistoricalMasterLists(Request $request)
+    {
+        $stations = Station::all();
+        $stationId = $request->input('station_id');
+
+        $query = MasterList::with('station')->latest();
+
+        if ($stationId) {
+            $query->where('station_id', $stationId);
+        }
+
+        $historicalMasterLists = $query->paginate(50);
+
+        return view('admin.historical_master_lists', compact('historicalMasterLists', 'stations', 'stationId'));
+    }
+
+    public function indexScanLogs(Request $request)
+    {
+        $stations = Station::all();
+        $stationId = $request->input('station_id');
+        $date = $request->input('date');
+
+        $query = ScanLog::with('station')->latest();
+
+        if ($stationId) {
+            $query->where('station_id', $stationId);
+        }
+        if ($date) {
+            $query->whereDate('scanned_at', $date);
+        }
+
+        $scanLogs = $query->paginate(50);
+
+        return view('admin.scan_logs', compact('scanLogs', 'stations', 'stationId', 'date'));
+    }
+
+    public function saveAndArchiveBatch(Request $request, $stationId)
+    {
+        $station = Station::findOrFail($stationId);
+        
+        $activeLogs = ScanLog::where('station_id', $stationId)
+            ->where('is_archived', false)
+            ->get();
+
+        if ($activeLogs->isNotEmpty()) {
+            PublishedAuditLog::create([
+                'station_id'    => $station->id,
+                'audit_date'    => today(),
+                'snapshot_data' => $activeLogs->toArray(),
+                'published_by'  => Auth::id() ?? $station->id,
+            ]);
+
+            ScanLog::where('station_id', $stationId)
+                ->where('is_archived', false)
+                ->update(['is_archived' => true]);
+        }
+
+        MasterList::where('station_id', $stationId)
+            ->where('is_active', true)
+            ->update(['is_active' => false]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Batch successfully saved, locked for future reference, and cleared from the client PWA.'
+        ]);
+    }
+
+    public function saveAndArchiveBatchForm(Request $request)
+    {
+        $request->validate([
+            'station_id' => 'required|exists:stations,id'
+        ]);
+
+        $stationId = $request->station_id;
+        $station = Station::findOrFail($stationId);
+        
+        $activeLogs = ScanLog::where('station_id', $stationId)
+            ->where('is_archived', false)
+            ->get();
+
+        if ($activeLogs->isNotEmpty()) {
+            PublishedAuditLog::create([
+                'station_id'    => $station->id,
+                'audit_date'    => today(),
+                'snapshot_data' => $activeLogs->toArray(),
+                'published_by'  => Auth::id() ?? $station->id,
+            ]);
+
+            ScanLog::where('station_id', $stationId)
+                ->where('is_archived', false)
+                ->update(['is_archived' => true]);
+        }
+
+        MasterList::where('station_id', $stationId)
+            ->where('is_active', true)
+            ->update(['is_active' => false]);
+
+        return back()->with('success', 'Batch successfully saved, locked for future reference, and cleared from the client PWA.');
+    }
+
     public function storeStation(Request $request) {
         $validated = $request->validate([
             'unique_identifier' => 'required|unique:stations',
@@ -236,7 +331,6 @@ class AdminController extends Controller {
         return response()->json(['message' => 'Station created successfully', 'station' => $station]);
     }
 
-    // Update an existing station
     public function updateStation(Request $request, $id) {
         $station = Station::findOrFail($id);
         
@@ -256,13 +350,11 @@ class AdminController extends Controller {
         return response()->json(['message' => 'Station updated successfully', 'station' => $station]);
     }
 
-    // Render Stations CRUD Management View
     public function indexStationsView() {
         $stations = Station::withCount(['masterLists', 'scanLogs'])->get();
         return view('admin.stations', compact('stations'));
     }
 
-    // Store a new station
     public function storeStationForm(Request $request) {
         $validated = $request->validate([
             'unique_identifier' => 'required|string|unique:stations,unique_identifier',
@@ -278,7 +370,6 @@ class AdminController extends Controller {
         return back()->with('success', 'Station created successfully.');
     }
 
-    // Update an existing station
     public function updateStationForm(Request $request, $id) {
         $station = Station::findOrFail($id);
 
@@ -298,7 +389,6 @@ class AdminController extends Controller {
         return back()->with('success', 'Station updated successfully.');
     }
 
-    // Delete a station
     public function destroyStationForm($id) {
         $station = Station::findOrFail($id);
         $station->delete();
@@ -306,7 +396,6 @@ class AdminController extends Controller {
         return back()->with('success', 'Station deleted successfully.');
     }
 
-    // Delete a station
     public function destroyStation($id) {
         $station = Station::findOrFail($id);
         $station->delete();
@@ -333,7 +422,6 @@ class AdminController extends Controller {
         return response()->json(['message' => 'Account created successfully', 'station' => $station]);
     }
 
-    // Web form version for uploading master list from /admin/dashboard
     public function uploadMasterListForm(Request $request) {
         $request->validate([
             'station_id' => 'required|exists:stations,id',
@@ -346,7 +434,16 @@ class AdminController extends Controller {
     protected function processMasterListUpload(Request $request, $stationId, $isApi) {
         $path = $request->file('file')->getRealPath();
         $file = fopen($path, 'r');
-        $header = fgetcsv($file); // expected headers: Tracking #, Hub, Aging (or similar)
+        $header = fgetcsv($file);
+
+        // Deactivate old master list items & archive active scans on fresh import
+        MasterList::where('station_id', $stationId)
+            ->where('is_active', true)
+            ->update(['is_active' => false]);
+
+        ScanLog::where('station_id', $stationId)
+            ->where('is_archived', false)
+            ->update(['is_archived' => true]);
 
         $count = 0;
         while (($row = fgetcsv($file)) !== FALSE) {
@@ -356,7 +453,6 @@ class AdminController extends Controller {
             $hub = trim($row[1] ?? 'KE-3PL-Flexcom');
             $agingDays = intval($row[2] ?? 0);
             
-            // Backdate arrival_date so aging continues counting forward dynamically
             $arrivalDate = now()->subDays($agingDays);
 
             MasterList::updateOrCreate(
@@ -366,6 +462,7 @@ class AdminController extends Controller {
                     'aging'           => $agingDays,
                     'arrival_date'    => $arrivalDate,
                     'expiration_date' => $arrivalDate->copy()->addDays(10),
+                    'is_active'       => true
                 ]
             );
             $count++;
@@ -391,7 +488,7 @@ class AdminController extends Controller {
 
         $date = $request->input('audit_date');
 
-        $logs = \App\Models\ScanLog::where('station_id', $station->id)
+        $logs = ScanLog::where('station_id', $station->id)
             ->whereDate('scanned_at', $date)
             ->get();
 
@@ -405,10 +502,9 @@ class AdminController extends Controller {
         return back()->with('success', 'Audit log locked & published successfully for ' . $date);
     }
 
-    // API version for publishing audit log
     public function publishAuditLog(Request $request, $stationId) {
         $date = $request->input('audit_date', today());
-        $logs = \App\Models\ScanLog::where('station_id', $stationId)
+        $logs = ScanLog::where('station_id', $stationId)
             ->whereDate('scanned_at', $date)
             ->get();
 

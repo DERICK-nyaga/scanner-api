@@ -37,7 +37,6 @@ function playAudioSignal(type) {
   } catch (e) {}
 }
 
-// STORAGE KEYS: Separate master cache from the offline sync outbox queue
 const OUTBOX_KEY = 'scanner-offline-outbox-v1'
 const MASTER_KEY = 'scanner-master-list-v4'
 const SETTINGS_KEY = 'scanner-settings'
@@ -50,7 +49,6 @@ try { savedSettings = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || { disabl
 
 createApp({
   setup() {
-    // rows represents the unified state fetched straight from the server API
     const rows = ref([])
     const masterList = ref(savedMaster)
     const settings = ref(savedSettings)
@@ -68,7 +66,6 @@ createApp({
     let lastCode = '', lastTime = 0
     let pollInterval = null
 
-    // Track online/offline status changes dynamically
     window.addEventListener('online', () => {
       isOnline.value = true
       setStatus('Connection re-established. Flushing offline queue...', 'success')
@@ -90,7 +87,7 @@ createApp({
             if (exists) {
               await fetchServerScans()
               await loadStationDetails(currentStationId.value)
-              flushOutbox() // Try flushing any pending offline scans on load
+              flushOutbox()
             } else {
               currentStationId.value = ''
             }
@@ -101,48 +98,67 @@ createApp({
       }
     }
 
-    // Fetch clean server-side state (Server is Source of Truth)
+    function clearStationOutbox() {
+      try {
+        const outbox = getOutbox()
+        const filtered = outbox.filter(item => String(item.station_id) !== String(currentStationId.value))
+        saveOutbox(filtered)
+      } catch {}
+    }
+
     async function fetchServerScans() {
       if (!currentStationId.value) return
       try {
-        // Poll station details every sync cycle to catch admin security broadcasts live
         const stationRes = await fetch(`/api/admin/stations/${currentStationId.value}/details`).catch(() => null)
         if (stationRes && stationRes.ok) {
           const stationData = await stationRes.json()
+          
           if (stationData.station && typeof stationData.station.disable_manual !== 'undefined') {
             settings.value.disableManual = Boolean(stationData.station.disable_manual)
           }
+
+          const activeMaster = (stationData.master_list || []).map(m => {
+            const initialAging = Number(m.aging || 0)
+            return { ...m, arrival_date: m.arrival_date || new Date(Date.now() - initialAging * 86400000).toISOString() }
+          })
+          masterList.value = activeMaster
+          try { localStorage.setItem(MASTER_KEY, JSON.stringify(activeMaster)) } catch {}
         }
 
         const res = await fetch(`/api/scans?station_id=${currentStationId.value}`)
         if (res.ok) {
           const data = await res.json()
           const scanItems = Array.isArray(data) ? data : (data.data || [])
-          const serverRowsMap = new Map()
-          scanItems.forEach(item => {
-            const code = String(item.code || item.tracking_number || '').trim().toUpperCase()
-            if (code) {
-              serverRowsMap.set(code, {
-                id: item.client_id || item.id || uid(),
-                code: code,
-                hub: item.hub || 'KE-3PL-Flexcom',
-                aging: item.aging || 0,
-                arrival_date: item.arrival_date,
-                ts: item.scanned_at || item.created_at || now(),
-                method: item.method || 'scanned',
-                matchStatus: item.match_status || 'matched',
-                note: item.note || ''
-              })
-            }
-          })
-          rows.value = Array.from(serverRowsMap.values())
+          
+          if (scanItems.length === 0) {
+            rows.value = []
+            clearStationOutbox()
+          } else {
+            const serverRowsMap = new Map()
+            scanItems.forEach(item => {
+              const code = String(item.code || item.tracking_number || '').trim().toUpperCase()
+              if (code) {
+                serverRowsMap.set(code, {
+                  id: item.client_id || item.id || uid(),
+                  code: code,
+                  hub: item.hub || 'KE-3PL-Flexcom',
+                  aging: item.aging || 0,
+                  arrival_date: item.arrival_date,
+                  ts: item.scanned_at || item.created_at || now(),
+                  method: item.method || 'scanned',
+                  matchStatus: item.match_status || 'matched',
+                  note: item.note || ''
+                })
+              }
+            })
+            rows.value = Array.from(serverRowsMap.values())
+          }
         }
       } catch (e) {
         console.error('Failed to sync station scans from server', e)
       }
     }
 
-    // Outbox Queue Management Helpers
     function getOutbox() {
       try { return JSON.parse(localStorage.getItem(OUTBOX_KEY)) || [] } catch { return [] }
     }
@@ -150,7 +166,6 @@ createApp({
       try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(queue)) } catch {}
     }
 
-    // Push mutations via Outbox pattern with UUID handling
     async function syncToServer(payloadRows) {
       if (!currentStationId.value) return
       const outbox = getOutbox()
@@ -209,7 +224,7 @@ createApp({
           fetchServerScans()
           flushOutbox()
         }
-      }, 15000)
+      }, 5000)
     })
 
     onUnmounted(() => {
@@ -221,10 +236,14 @@ createApp({
         const res = await fetch(`/api/admin/stations/${id}/details`)
         if (res.ok) {
           const data = await res.json()
-          masterList.value = (data.master_list || []).map(m => {
+          const freshMaster = (data.master_list || []).map(m => {
             const initialAging = Number(m.aging || 0)
             return { ...m, arrival_date: m.arrival_date || new Date(Date.now() - initialAging * 86400000).toISOString() }
           })
+          
+          masterList.value = freshMaster
+          try { localStorage.setItem(MASTER_KEY, JSON.stringify(freshMaster)) } catch {}
+
           if (data.station && typeof data.station.disable_manual !== 'undefined') {
             settings.value.disableManual = Boolean(data.station.disable_manual)
           }
@@ -240,6 +259,8 @@ createApp({
       localStorage.setItem('active_station_id', id)
       rows.value = []
       masterList.value = []
+      try { localStorage.removeItem(MASTER_KEY) } catch {}
+
       await loadStationDetails(id)
       await fetchServerScans()
       flushOutbox()
@@ -509,7 +530,6 @@ createApp({
   },
   template: `
     <div class="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased pb-12">
-      <!-- Top Header -->
       <header class="bg-teal-700 text-white shadow-md">
         <div class="max-w-6xl mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center gap-3">
           <div class="flex items-center gap-2">
@@ -517,7 +537,6 @@ createApp({
             <span :class="isOnline ? 'bg-emerald-500' : 'bg-amber-500'" class="w-2.5 h-2.5 rounded-full inline-block" :title="isOnline ? 'Online' : 'Offline Mode'"></span>
           </div>
 
-          <!-- Station Switcher Dropdown -->
           <div class="w-full sm:w-auto">
             <select v-model="currentStationId" @change="switchStation(currentStationId)" class="w-full sm:w-64 bg-teal-800 text-white border border-teal-600 rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-white transition cursor-pointer">
               <option value="" disabled>Select Station</option>
@@ -535,7 +554,6 @@ createApp({
       </header>
 
       <main class="max-w-6xl mx-auto px-4 mt-6">
-        <!-- Tools Action Bar (2 Columns - nicely spaced) -->
         <div class="grid grid-cols-2 gap-4 mb-6">
           <button @click="openMode('camera')" :class="mode === 'camera' ? 'border-teal-600 bg-teal-50 ring-2 ring-teal-500/20' : 'border-slate-200 bg-white hover:border-teal-400 hover:bg-slate-50'" class="flex flex-col items-center justify-center p-4 border rounded-xl shadow-sm transition cursor-pointer">
             <span class="text-2xl mb-1">📷</span>
@@ -551,12 +569,10 @@ createApp({
           </button>
         </div>
 
-        <!-- Notification Banner -->
         <div v-if="statusMsg.text" :class="statusMsg.type === 'error' ? 'bg-red-50 text-red-800 border-red-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'" class="p-3 mb-6 border rounded-lg text-sm font-medium shadow-sm transition">
           {{ statusMsg.text }}
         </div>
 
-        <!-- Camera Panel -->
         <section v-if="mode === 'camera'" class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6">
           <div id="reader" class="w-full h-64 bg-slate-900 rounded-lg overflow-hidden flex items-center justify-center text-slate-400 text-sm">Initializing camera stream...</div>
           <div class="flex justify-between items-center mt-4">
@@ -565,7 +581,6 @@ createApp({
           </div>
         </section>
 
-        <!-- Keyboard Panel -->
         <section v-if="mode === 'keyboard'" class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6">
           <div class="flex gap-2">
             <input v-model="typed" placeholder="Enter tracking number..." @keydown.enter.prevent="saveTyped" autofocus class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
@@ -574,7 +589,6 @@ createApp({
           </div>
         </section>
 
-        <!-- Reconciliation Data Table Card -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">

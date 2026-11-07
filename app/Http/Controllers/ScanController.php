@@ -7,16 +7,17 @@ use Illuminate\Http\Request;
 
 class ScanController extends Controller
 {
-
     public function index(Request $request)
     {
         $stationId = $request->query('station_id');
         
         if (!$stationId) {
-            return response()->json([], 200); // Return empty array instead of 400 error
+            return response()->json([], 200);
         }
 
+        // Only return active (unarchived) scans to the PWA scanner feed
         return ScanLog::where('station_id', $stationId)
+            ->where('is_archived', false)
             ->orderByDesc('id')
             ->take(500)
             ->get()
@@ -37,11 +38,11 @@ class ScanController extends Controller
         
         return response()->streamDownload(function () use ($stationId) {
             $out = fopen('php://output', 'w');
-            // Add UTF-8 BOM for proper Excel compatibility
             fwrite($out, "\xEF\xBB\xBF");
             fputcsv($out, ['Tracking Number', 'Timestamp', 'Method', 'Match Status', 'Notes']);
             
             ScanLog::where('station_id', $stationId)
+                ->where('is_archived', false)
                 ->orderByDesc('id')
                 ->cursor()
                 ->each(fn ($s) => fputcsv($out, [
