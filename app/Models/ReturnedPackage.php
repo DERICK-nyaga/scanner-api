@@ -15,6 +15,7 @@ class ReturnedPackage extends Model {
         'tracking_number',
         'return_date',
         'reason',
+        'customer_phone',
         'status',
     ];
 
