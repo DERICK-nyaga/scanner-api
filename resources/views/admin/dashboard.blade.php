@@ -1,252 +1,300 @@
-@extends('layouts.app') 
+@extends('layouts.app')
 
-@section('content') 
-<div class="container py-4"> 
-    <div class="d-flex justify-content-between align-items-center mb-4"> 
-        <h2>📊 Station Admin Dashboard</h2> 
-        <div class="d-flex gap-2"> 
-            <a href="/app/" target="_blank" class="btn btn-outline-primary">📦 Open Station PWA Scanner</a> 
-            <a href="{{ route('admin.historical.master') }}" class="btn btn-outline-secondary">📋 Historical Master Lists</a> 
-            <a href="{{ route('admin.stations.index') }}" class="btn btn-primary">🏢 Manage Stations</a> 
-        </div> 
-    </div> 
+@section('title', 'PickUp Hub | Station Admin Dashboard')
 
-    <!-- Session Feedback Alerts --> 
-    @if(session('success')) 
-        <div class="alert alert-success py-2 mb-4">{{ session('success') }}</div> 
-    @endif 
-    @if(session('error')) 
-        <div class="alert alert-danger py-2 mb-4">{{ session('error') }}</div> 
-    @endif 
+@section('content')
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
-    <!-- Quick Access Metric / Navigation Cards --> 
-    <div class="row g-4 mb-5"> 
-        <!-- Returns & Jumia Reverse Logistics Portal --> 
-        <div class="col-md-3"> 
-            <div class="card shadow-sm border-0 h-100 bg-white"> 
-                <div class="card-body flex-column d-flex justify-content-between"> 
-                    <div> 
-                        <h5 class="card-title text-danger">🔄 Returns & OTP Portal</h5> 
-                        <p class="card-text text-muted small">Manage packages returning to Jumia network, assign pickup agents, and verify OTP codes.</p> 
-                    </div> 
-                    <a href="{{ route('admin.returns') }}" class="btn btn-sm btn-danger w-100 mt-2">Open Returns Portal</a> 
-                </div> 
-            </div> 
-        </div> 
+    <!-- PAGE HEADER -->
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div>
+            <span class="bg-hub-50 text-hub-700 border border-hub-200 text-[10px] font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">Control Panel</span>
+            <h1 class="text-2xl font-bold text-slate-900 mt-1 flex items-center gap-2">
+                <i class="fa-solid fa-chart-line text-hub-600"></i> Station Admin Dashboard
+            </h1>
+            <p class="text-xs text-slate-500 mt-0.5">Manage live manifests, reverse logistics, audit snapshots, and operator security controls.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2.5">
+            <a href="/app/" target="_blank" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium px-3.5 py-2 rounded-lg shadow-sm transition flex items-center gap-2">
+                <i class="fa-solid fa-box-open"></i> Open Station PWA Scanner
+            </a>
+            <a href="{{ route('admin.historical.master') }}" class="bg-white border border-slate-300 hover:border-slate-400 text-slate-700 text-xs font-medium px-3.5 py-2 rounded-lg shadow-sm transition flex items-center gap-2">
+                <i class="fa-solid fa-clock-rotate-left"></i> Historical Master Lists
+            </a>
+            <a href="{{ route('admin.stations.index') }}" class="bg-hub-600 hover:bg-hub-700 text-white text-xs font-medium px-3.5 py-2 rounded-lg shadow-sm transition flex items-center gap-2">
+                <i class="fa-solid fa-building-shield"></i> Manage Stations
+            </a>
+        </div>
+    </div>
 
-        <!-- Published & Locked Audit Logs --> 
-        <div class="col-md-3"> 
-            <div class="card shadow-sm border-0 h-100 bg-white"> 
-                <div class="card-body flex-column d-flex justify-content-between"> 
-                    <div> 
-                        <h5 class="card-title text-success">🔒 Published Audit Logs</h5> 
-                        <p class="card-text text-muted small">View immutable, locked historical daily scan snapshots for auditing and compliance.</p> 
-                    </div> 
-                    <a href="{{ route('admin.audit.logs') }}" class="btn btn-sm btn-success w-100 mt-2">View Audit Logs</a> 
-                </div> 
-            </div> 
-        </div> 
+    <!-- SESSION FEEDBACK ALERTS -->
+    @if(session('success'))
+        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl text-xs flex justify-between items-center shadow-sm">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i>
+                <span>{{ session('success') }}</span>
+            </div>
+            <button type="button" class="text-emerald-600 hover:text-emerald-800 font-bold" onclick="this.parentElement.remove()">&times;</button>
+        </div>
+    @endif
+    @if(session('error'))
+        <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl text-xs flex justify-between items-center shadow-sm">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-circle-exclamation text-red-600 text-sm"></i>
+                <span>{{ session('error') }}</span>
+            </div>
+            <button type="button" class="text-red-600 hover:text-red-800 font-bold" onclick="this.parentElement.remove()">&times;</button>
+        </div>
+    @endif
 
-        <!-- Delivery Notes / Waybills --> 
-        <div class="col-md-3"> 
-            <div class="card shadow-sm border-0 h-100 bg-white"> 
-                <div class="card-body flex-column d-flex justify-content-between"> 
-                    <div> 
-                        <h5 class="card-title text-primary">📄 Delivery Notes / Waybills</h5> 
-                        <p class="card-text text-muted small">Upload and review scanned waybills and proofs of dispatch for station packages.</p> 
-                    </div> 
-                    <a href="{{ route('admin.delivery-notes.index') }}" class="btn btn-sm btn-primary w-100 mt-2">View Delivery Notes</a> 
-                </div> 
-            </div> 
-        </div> 
+    <!-- QUICK ACCESS METRIC / NAVIGATION CARDS -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        
+        <!-- Returns & Jumia Reverse Logistics Portal -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between hover:border-rose-300 transition group">
+            <div>
+                <div class="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg mb-4 group-hover:scale-110 transition">
+                    <i class="fa-solid fa-rotate-left"></i>
+                </div>
+                <h3 class="text-sm font-bold text-slate-900">Returns & OTP Portal</h3>
+                <p class="text-xs text-slate-500 mt-1 leading-relaxed">Manage packages returning to Jumia network, assign pickup agents, and verify OTP codes.</p>
+            </div>
+            <a href="{{ route('admin.returns') }}" class="mt-6 w-full bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white text-xs font-semibold py-2 px-3 rounded-lg text-center transition flex items-center justify-center gap-1.5">
+                <span>Open Returns Portal</span>
+                <i class="fa-solid fa-arrow-right text-[10px]"></i>
+            </a>
+        </div>
 
-        <!-- Customer SMS Notification History --> 
-        <div class="col-md-3"> 
-            <div class="card shadow-sm border-0 h-100 bg-white"> 
-                <div class="card-body flex-column d-flex justify-content-between"> 
-                    <div> 
-                        <h5 class="card-title text-warning text-dark">💬 SMS Reminder Logs</h5> 
-                        <p class="card-text text-muted small">Track automated customer reminder messages, expiration alerts, and delivery statuses.</p> 
-                    </div> 
-                    <a href="{{ route('admin.sms.logs') }}" class="btn btn-sm btn-warning w-100 text-dark mt-2">View SMS History</a> 
-                </div> 
-            </div> 
-        </div> 
-    </div> 
+        <!-- Published & Locked Audit Logs -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between hover:border-emerald-300 transition group">
+            <div>
+                <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg mb-4 group-hover:scale-110 transition">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <h3 class="text-sm font-bold text-slate-900">Published Audit Logs</h3>
+                <p class="text-xs text-slate-500 mt-1 leading-relaxed">View immutable, locked historical daily scan snapshots for auditing and compliance.</p>
+            </div>
+            <a href="{{ route('admin.audit.logs') }}" class="mt-6 w-full bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white text-xs font-semibold py-2 px-3 rounded-lg text-center transition flex items-center justify-center gap-1.5">
+                <span>View Audit Logs</span>
+                <i class="fa-solid fa-arrow-right text-[10px]"></i>
+            </a>
+        </div>
 
-    <!-- Admin Batch Save & Permanent Archive Card --> 
-    <div class="row g-4 mb-4"> 
-        <div class="col-12"> 
-            <div class="card shadow-sm border-0"> 
-                <div class="card-body"> 
-                    <div class="d-flex justify-content-between align-items-center mb-3"> 
-                        <div> 
-                            <h5 class="card-title text-slate-800 mb-1">🔒 Admin Batch Save & Permanent Archive</h5> 
-                            <p class="text-muted small mb-0">Save current active scans for future reference. Once saved, records become immutable and the active board resets to a blank page for your next import.</p> 
-                        </div> 
-                    </div> 
-                    <form action="{{ route('admin.batch.save') }}" method="POST" onsubmit="return confirm('Are you sure you want to save and lock this batch? This will clear active records from the PWA, archive the active master list, and lock records permanently.');"> 
-                        @csrf 
-                        <div class="row align-items-end g-3"> 
-                            <div class="col-md-8"> 
-                                <label class="form-label fw-bold">Select Station Batch to Archive & Reset</label> 
-                                <select name="station_id" class="form-select" required> 
-                                    <option value="" disabled selected>Select station...</option> 
-                                    @foreach($stations as $station) 
-                                        <option value="{{ $station->id }}">{{ $station->unique_identifier }}</option> 
-                                    @endforeach 
-                                </select> 
-                            </div> 
-                            <div class="col-md-4"> 
-                                <button type="submit" class="btn btn-dark w-100"> 
-                                    💾 Save Batch & Reset Page 
-                                </button> 
-                            </div> 
-                        </div> 
-                    </form> 
-                </div> 
-            </div> 
-        </div> 
-    </div> 
+        <!-- Delivery Notes / Waybills -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between hover:border-blue-300 transition group">
+            <div>
+                <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg mb-4 group-hover:scale-110 transition">
+                    <i class="fa-solid fa-file-lines"></i>
+                </div>
+                <h3 class="text-sm font-bold text-slate-900">Delivery Notes / Waybills</h3>
+                <p class="text-xs text-slate-500 mt-1 leading-relaxed">Upload and review scanned waybills and proofs of dispatch for station packages.</p>
+            </div>
+            <a href="{{ route('admin.delivery-notes.index') }}" class="mt-6 w-full bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white text-xs font-semibold py-2 px-3 rounded-lg text-center transition flex items-center justify-center gap-1.5">
+                <span>View Delivery Notes</span>
+                <i class="fa-solid fa-arrow-right text-[10px]"></i>
+            </a>
+        </div>
 
-    <!-- Master List Real-Time Management & Reset Card --> 
-    <div class="row g-4 mb-4"> 
-        <div class="col-12"> 
-            <div class="card shadow-sm border-0"> 
-                <div class="card-body"> 
-                    <div class="d-flex justify-content-between align-items-center mb-3"> 
-                        <div> 
-                            <h5 class="card-title text-slate-800 mb-1">📋 Station Master List & Real-Time Reset</h5> 
-                            <p class="text-muted small mb-0">Upload, view active expected packages in real-time, or clear/reset the master list once scans are completed.</p> 
-                        </div> 
-                        <div> 
-                            <a href="{{ route('admin.scan.logs') }}" class="btn btn-outline-secondary btn-sm">📜 Retrieve Historical Scan Logs</a> 
-                        </div> 
-                    </div> 
-                    
-                    <div id="masterListAlert" class="alert d-none py-2" role="alert"></div> 
-                    
-                    <div class="row g-3"> 
-                        <!-- Station Selector for Master List --> 
-                        <div class="col-md-4"> 
-                            <label class="form-label fw-bold">Select Station to Inspect</label> 
-                            <select id="masterStationSelect" class="form-select"> 
-                                <option value="" disabled selected>Select station...</option> 
-                                @foreach($stations as $station) 
-                                    <option value="{{ $station->id }}">{{ $station->unique_identifier }}</option> 
-                                @endforeach 
-                            </select> 
-                            <div class="mt-3 p-3 bg-light rounded border"> 
-                                <h6 class="fw-bold mb-2">📥 Upload New Master List (CSV)</h6> 
-                                <form id="masterUploadForm" action="{{ route('admin.master.upload') }}" method="POST" enctype="multipart/form-data"> 
-                                    @csrf 
-                                    <input type="hidden" name="station_id" id="formStationId"> 
-                                    <div class="mb-2"> 
-                                        <input type="file" name="file" class="form-control form-control-sm" accept=".csv,.txt" required> 
-                                    </div> 
-                                    <button type="submit" class="btn btn-primary btn-sm w-100" id="uploadMasterBtn">Save & Import Master List</button> 
-                                </form> 
-                                <!-- Clear / Reset Button --> 
-                                <button id="clearMasterBtn" class="btn btn-danger btn-sm w-100 mt-2" disabled> 
-                                    🗑️ Clear / Reset Master List (Blank Page) 
-                                </button> 
-                            </div> 
-                        </div> 
-                        
-                        <!-- Real-Time Master List Preview Table --> 
-                        <div class="col-md-8"> 
-                            <label class="form-label fw-bold">Live Master List Preview (<span id="masterCount">0</span> items loaded)</label> 
-                            <div class="table-responsive border rounded bg-white" style="max-height: 300px; overflow-y: auto;"> 
-                                <table class="table table-sm table-striped mb-0 text-xs"> 
-                                    <thead class="table-light sticky-top"> 
-                                        <tr> 
-                                            <th>#</th> 
-                                            <th>Tracking Number</th> 
-                                            <th>Hub</th> <th>Aging</th> 
-                                            <th>Arrival Date</th> 
-                                        </tr> 
-                                    </thead> 
-                                    <tbody id="masterTableBody"> 
-                                        <tr> 
-                                            <td colspan="5" class="text-center text-muted py-4">Select a station above to view its live master list.</td> 
-                                        </tr> 
-                                    </tbody> 
-                                </table> 
-                            </div> 
-                        </div> 
-                    </div> 
-                </div> 
-            </div> 
-        </div> 
-    </div> 
+        <!-- Customer SMS Notification History -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between hover:border-amber-300 transition group">
+            <div>
+                <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg mb-4 group-hover:scale-110 transition">
+                    <i class="fa-solid fa-comments"></i>
+                </div>
+                <h3 class="text-sm font-bold text-slate-900">SMS Reminder Logs</h3>
+                <p class="text-xs text-slate-500 mt-1 leading-relaxed">Track automated customer reminder messages, expiration alerts, and delivery statuses.</p>
+            </div>
+            <a href="{{ route('admin.sms.logs') }}" class="mt-6 w-full bg-amber-50 hover:bg-amber-500 text-amber-800 hover:text-white text-xs font-semibold py-2 px-3 rounded-lg text-center transition flex items-center justify-center gap-1.5">
+                <span>View SMS History</span>
+                <i class="fa-solid fa-arrow-right text-[10px]"></i>
+            </a>
+        </div>
 
-    <!-- Publish & Lock Audit Log Card --> 
-    <div class="row g-4 mb-4"> 
-        <div class="col-12"> 
-            <div class="card shadow-sm border-0"> 
-                <div class="card-body"> 
-                    <h5 class="card-title mb-3">🔒 Publish & Lock Daily Audit Log</h5> 
-                    <form action="{{ route('admin.audit.publish') }}" method="POST"> 
-                        @csrf 
-                        <div class="row align-items-end"> 
-                            <div class="col-md-9 mb-3 mb-md-0"> 
-                                <label class="form-label">Select Audit Date to Lock</label> 
-                                <input type="date" name="audit_date" class="form-control" value="{{ date('Y-m-d') }}" required> 
-                                <p class="text-muted small mb-0 mt-1">Publishing locks the scan logs for this date, making them permanently read-only and preventing any modifications or deletions.</p> 
-                            </div> 
-                            <div class="col-md-3"> 
-                                <button type="submit" class="btn btn-dark w-100">Lock & Publish Audit Log</button> 
-                            </div> 
-                        </div> 
-                    </form> 
-                </div> 
-            </div> 
-        </div> 
-    </div> 
+    </div>
 
-    <!-- Station Security & Access Control Management Card --> 
-    <div class="row g-4"> 
-        <div class="col-12"> 
-            <div class="card shadow-sm border-0"> 
-                <div class="card-body"> 
-                    <h5 class="card-title mb-3 text-slate-800">🛡️ Station Security & Access Controls</h5> 
-                    <p class="text-muted small">Configure restriction policies for scanner PWA operators across one, multiple, or all distribution stations.</p> 
-                    <div id="securityAlert" class="alert d-none py-2" role="alert"></div> 
-                    <div class="row align-items-center"> 
-                        <div class="col-md-5 mb-3 mb-md-0"> 
-                            <div class="d-flex justify-content-between align-items-center mb-1"> 
-                                <label class="form-label fw-bold mb-0">Select Target Station(s)</label> 
-                                <div class="form-check"> 
-                                    <input class="form-check-input cursor-pointer" type="checkbox" id="selectAllStations"> 
-                                    <label class="form-check-label small text-muted cursor-pointer" for="selectAllStations">Select All</label> 
-                                </div> 
-                            </div> 
-                            <select id="securityStationSelect" class="form-select" multiple size="5"> 
-                                @foreach($stations as $station) 
-                                    <option value="{{ $station->id }}">{{ $station->unique_identifier }}</option> 
-                                @endforeach 
-                            </select> 
-                            <small class="text-muted d-block mt-1">Hold Ctrl (Windows) or Cmd (Mac) to select multiple individual stations.</small> 
-                        </div> 
-                        <div class="col-md-7"> 
-                            <div class="p-3 bg-light border rounded d-flex align-items-center justify-content-between mb-3"> 
-                                <div> 
-                                    <h6 class="mb-1 font-semibold">Disable Manual Type-in for Normal Users</h6> 
-                                    <p class="text-muted small mb-0">Prevents station operators from typing tracking numbers manually. Forces physical barcode/QR scanning across selected hubs.</p> 
-                                </div> 
-                                <div class="form-check form-switch fs-4 ms-3"> 
-                                    <input class="form-check-input cursor-pointer" type="checkbox" id="disableManualToggle"> 
-                                </div> 
-                            </div> 
-                            <button id="saveSecurityBtn" class="btn btn-primary w-100"> 
-                                💾 Save & Broadcast Security Changes 
-                            </button> 
-                        </div> 
-                    </div> 
-                </div> 
-            </div> 
-        </div> 
-    </div> 
+    <!-- ADMIN BATCH SAVE & PERMANENT ARCHIVE CARD -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8">
+        <div class="mb-4">
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                <i class="fa-solid fa-box-archive text-amber-600"></i> Admin Batch Save & Permanent Archive
+            </h3>
+            <p class="text-xs text-slate-500 mt-1">Save current active scans for future reference. Once saved, records become immutable and the active board resets to a blank page for your next import.</p>
+        </div>
+        <form action="{{ route('admin.batch.save') }}" method="POST" onsubmit="return confirm('Are you sure you want to save and lock this batch? This will clear active records from the PWA, archive the active master list, and lock records permanently.');">
+            @csrf
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                <div class="md:col-span-8">
+                    <label class="block text-xs font-medium text-slate-700 uppercase tracking-wider mb-1.5">Select Station Batch to Archive & Reset</label>
+                    <select name="station_id" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-hub-500 focus:border-hub-500 bg-white" required>
+                        <option value="" disabled selected>Select station...</option>
+                        @foreach($stations as $station)
+                            <option value="{{ $station->id }}">{{ $station->unique_identifier }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="md:col-span-4">
+                    <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 px-4 rounded-lg text-xs shadow-sm transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Save Batch & Reset Page</span>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- MASTER LIST REAL-TIME MANAGEMENT & RESET CARD -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <div>
+                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <i class="fa-solid fa-list-check text-hub-600"></i> Station Master List & Real-Time Reset
+                </h3>
+                <p class="text-xs text-slate-500 mt-1">Upload, view active expected packages in real-time, or clear/reset the master list once scans are completed.</p>
+            </div>
+            <div>
+                <a href="{{ route('admin.scan.logs') }}" class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg transition">
+                    <i class="fa-solid fa-scroll"></i> Retrieve Historical Scan Logs
+                </a>
+            </div>
+        </div>
+
+        <div id="masterListAlert" class="hidden rounded-xl p-3 text-xs mb-4"></div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <!-- Station Selector & Upload Box -->
+            <div class="lg:col-span-4 space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-700 uppercase tracking-wider mb-1.5">Select Station to Inspect</label>
+                    <select id="masterStationSelect" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-hub-500 bg-white">
+                        <option value="" disabled selected>Select station...</option>
+                        @foreach($stations as $station)
+                            <option value="{{ $station->id }}">{{ $station->unique_identifier }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <h4 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <i class="fa-solid fa-file-arrow-up text-hub-600"></i> Upload New Master List (CSV)
+                    </h4>
+                    <form id="masterUploadForm" action="{{ route('admin.master.upload') }}" method="POST" enctype="multipart/form-data" class="space-y-3">
+                        @csrf
+                        <input type="hidden" name="station_id" id="formStationId">
+                        <div>
+                            <input type="file" name="file" class="block w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-hub-50 file:text-hub-700 hover:file:bg-hub-100 cursor-pointer border border-slate-300 rounded-lg bg-white" accept=".csv,.txt" required>
+                        </div>
+                        <button type="submit" class="w-full bg-hub-600 hover:bg-hub-700 text-white font-medium py-2 px-3 rounded-lg text-xs shadow-sm transition">
+                            Save & Import Master List
+                        </button>
+                    </form>
+
+                    <button id="clearMasterBtn" class="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium py-2 px-3 rounded-lg text-xs border border-rose-200 transition flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        <i class="fa-solid fa-trash-can"></i>
+                        <span>Clear / Reset Master List (Blank)</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Real-Time Master List Preview Table -->
+            <div class="lg:col-span-8 flex flex-col">
+                <label class="block text-xs font-medium text-slate-700 uppercase tracking-wider mb-1.5">
+                    Live Master List Preview (<span id="masterCount" class="font-bold text-hub-600">0</span> items loaded)
+                </label>
+                <div class="flex-1 border border-slate-200 rounded-xl bg-white overflow-hidden flex flex-col min-h-[250px]">
+                    <div class="overflow-x-auto flex-1 max-h-[320px]">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider border-b border-slate-200 sticky top-0">
+                                <tr>
+                                    <th class="p-3">#</th>
+                                    <th class="p-3">Tracking Number</th>
+                                    <th class="p-3">Hub</th>
+                                    <th class="p-3">Aging</th>
+                                    <th class="p-3">Arrival Date</th>
+                                </tr>
+                            </thead>
+                            <tbody id="masterTableBody" class="divide-y divide-slate-100 text-slate-700">
+                                <tr>
+                                    <td colspan="5" class="p-8 text-center text-slate-400">Select a station above to view its live master list.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PUBLISH & LOCK AUDIT LOG CARD -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8">
+        <h3 class="text-base font-bold text-slate-900 mb-1 flex items-center gap-2">
+            <i class="fa-solid fa-lock text-slate-700"></i> Publish & Lock Daily Audit Log
+        </h3>
+        <p class="text-xs text-slate-500 mb-4">Publishing locks the scan logs for this date, making them permanently read-only and preventing any modifications or deletions.</p>
+        
+        <form action="{{ route('admin.audit.publish') }}" method="POST">
+            @csrf
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                <div class="md:col-span-9">
+                    <label class="block text-xs font-medium text-slate-700 uppercase tracking-wider mb-1.5">Select Audit Date to Lock</label>
+                    <input type="date" name="audit_date" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-hub-500 bg-white" value="{{ date('Y-m-d') }}" required>
+                </div>
+                <div class="md:col-span-3">
+                    <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 px-4 rounded-lg text-xs shadow-sm transition">
+                        Lock & Publish Audit Log
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- STATION SECURITY & ACCESS CONTROL MANAGEMENT CARD -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8">
+        <div class="mb-4">
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                <i class="fa-solid fa-shield-cat text-hub-600"></i> Station Security & Access Controls
+            </h3>
+            <p class="text-xs text-slate-500 mt-1">Configure restriction policies for scanner PWA operators across one, multiple, or all distribution stations.</p>
+        </div>
+
+        <div id="securityAlert" class="hidden rounded-xl p-3 text-xs mb-4"></div>
+
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+            <div class="md:col-span-5 space-y-2">
+                <div class="flex justify-between items-center">
+                    <label class="block text-xs font-medium text-slate-700 uppercase tracking-wider">Select Target Station(s)</label>
+                    <div class="flex items-center gap-1.5">
+                        <input class="w-3.5 h-3.5 text-hub-600 rounded border-slate-300 focus:ring-hub-500 cursor-pointer" type="checkbox" id="selectAllStations">
+                        <label for="selectAllStations" class="text-xs text-slate-500 cursor-pointer select-none">Select All</label>
+                    </div>
+                </div>
+                <select id="securityStationSelect" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-hub-500 bg-white" multiple size="5">
+                    @foreach($stations as $station)
+                        <option value="{{ $station->id }}">{{ $station->unique_identifier }}</option>
+                    @endforeach
+                </select>
+                <p class="text-[11px] text-slate-400">Hold Ctrl (Windows) or Cmd (Mac) to select multiple stations.</p>
+            </div>
+
+            <div class="md:col-span-7 space-y-4">
+                <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-4">
+                    <div>
+                        <h4 class="text-xs font-bold text-slate-800">Disable Manual Type-in for Normal Users</h4>
+                        <p class="text-[11px] text-slate-500 mt-0.5">Prevents station operators from typing tracking numbers manually. Forces physical barcode/QR scanning across selected hubs.</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="disableManualToggle" class="sr-only peer">
+                        <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-hub-600"></div>
+                    </label>
+                </div>
+
+                <button id="saveSecurityBtn" class="w-full bg-hub-600 hover:bg-hub-700 text-white font-medium py-2.5 px-4 rounded-lg text-xs shadow-sm transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span>Save & Broadcast Security Changes</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
 </div> 
 
 <script> 
@@ -259,10 +307,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const masterListAlert = document.getElementById('masterListAlert'); 
 
     function showMasterAlert(message, type = 'success') { 
-        masterListAlert.className = `alert alert-${type} py-2 mb-3`; 
-        masterListAlert.textContent = message; 
-        masterListAlert.classList.remove('d-none'); 
-        setTimeout(() => masterListAlert.classList.add('d-none'), 4000); 
+        masterListAlert.className = type === 'success' 
+            ? 'rounded-xl p-3 text-xs mb-4 bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-2'
+            : 'rounded-xl p-3 text-xs mb-4 bg-red-50 border border-red-200 text-red-800 flex items-center gap-2';
+        masterListAlert.innerHTML = `<i class="fa-solid fa-circle-${type === 'success' ? 'check' : 'exclamation'} text-sm"></i> <span>${message}</span>`;
+        masterListAlert.classList.remove('hidden'); 
+        setTimeout(() => masterListAlert.classList.add('hidden'), 4000); 
     } 
 
     async function fetchMasterListDetails(stationId) { 
@@ -275,16 +325,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 const items = data.master_list || []; 
                 masterCount.textContent = items.length; 
                 if (items.length === 0) { 
-                    masterTableBody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">No master list items found. Station is currently blank.</td></tr>`; 
+                    masterTableBody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-400">No master list items found. Station is currently blank.</td></tr>`; 
                     return; 
                 } 
                 masterTableBody.innerHTML = items.map((m, idx) => ` 
-                    <tr> 
-                        <td>${idx + 1}</td> 
-                        <td class="font-mono fw-bold">${m.tracking_number}</td> 
-                        <td>${m.hub || 'KE-3PL-Flexcom'}</td> 
-                        <td>${m.aging || 0} Days</td> 
-                        <td>${m.arrival_date || '-'}</td> 
+                    <tr class="hover:bg-slate-50 transition"> 
+                        <td class="p-3 text-slate-500">${idx + 1}</td> 
+                        <td class="p-3 font-mono font-bold text-slate-800">${m.tracking_number}</td> 
+                        <td class="p-3 text-slate-600">${m.hub || 'KE-3PL-Flexcom'}</td> 
+                        <td class="p-3 text-slate-600">${m.aging || 0} Days</td> 
+                        <td class="p-3 text-slate-400">${m.arrival_date || '-'}</td> 
                     </tr> 
                 `).join(''); 
             } 
@@ -325,7 +375,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showMasterAlert('Error clearing master list.', 'danger'); 
         } finally { 
             clearMasterBtn.disabled = false; 
-            clearMasterBtn.textContent = '🗑️ Clear / Reset Master List (Blank Page)'; 
+            clearMasterBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i> <span>Clear / Reset Master List (Blank)</span>'; 
         } 
     }); 
 
@@ -336,10 +386,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const securityAlert = document.getElementById('securityAlert'); 
 
     function showSecurityAlert(message, type = 'success') { 
-        securityAlert.className = `alert alert-${type} py-2 mb-3`; 
-        securityAlert.textContent = message; 
-        securityAlert.classList.remove('d-none'); 
-        setTimeout(() => securityAlert.classList.add('d-none'), 4000); 
+        securityAlert.className = type === 'success' 
+            ? 'rounded-xl p-3 text-xs mb-4 bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-2'
+            : 'rounded-xl p-3 text-xs mb-4 bg-red-50 border border-red-200 text-red-800 flex items-center gap-2';
+        securityAlert.innerHTML = `<i class="fa-solid fa-circle-${type === 'success' ? 'check' : 'exclamation'} text-sm"></i> <span>${message}</span>`;
+        securityAlert.classList.remove('hidden'); 
+        setTimeout(() => securityAlert.classList.add('hidden'), 4000); 
     } 
 
     selectAllCheckbox.addEventListener('change', (e) => { 
@@ -352,7 +404,7 @@ document.addEventListener('DOMContentLoaded', () => {
     saveSecurityBtn.addEventListener('click', async () => { 
         const selectedOptions = Array.from(securityStationSelect.selectedOptions); 
         if (selectedOptions.length === 0 && !selectAllCheckbox.checked) { 
-            showSecurityAlert('Please select at least one station or check "Select All".', 'warning'); 
+            showSecurityAlert('Please select at least one station or check "Select All".', 'danger'); 
             return; 
         } 
         const stationIds = selectAllCheckbox.checked ? 'all' : selectedOptions.map(opt => opt.value); 
@@ -380,7 +432,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showSecurityAlert('Failed to save security configuration to server.', 'danger'); 
         } finally { 
             saveSecurityBtn.disabled = false; 
-            saveSecurityBtn.textContent = '💾 Save & Broadcast Security Changes'; 
+            saveSecurityBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> <span>Save & Broadcast Security Changes</span>'; 
         } 
     }); 
 }); 
