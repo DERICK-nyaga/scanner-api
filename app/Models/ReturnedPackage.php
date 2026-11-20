@@ -13,14 +13,16 @@ class ReturnedPackage extends Model {
     protected $fillable = [
         'station_id',
         'tracking_number',
-        'return_date',
+        'linehaul_id',
+        'courier_phone',
         'reason',
-        'customer_phone',
+        'note',
         'status',
+        'return_date',
     ];
 
     protected $casts = [
-        'return_date' => 'date',
+        'return_date' => 'datetime',
     ];
 
     public function station() {
