@@ -18,6 +18,33 @@ use Illuminate\Support\Facades\Auth;
 
 class AdminController extends Controller {
 
+    protected function eatNow(): Carbon
+    {
+        return Carbon::now('Africa/Nairobi');
+    }
+
+    protected function eatToday(): Carbon
+    {
+        return Carbon::today('Africa/Nairobi');
+    }
+
+    public function dashboard()
+    {
+        $stations        = Station::all();
+        $masterlistCount = MasterList::where('is_active', true)->count();
+        $incomingCount   = ScanLog::whereDate('created_at', $this->eatToday())->count();
+        $returnsCount    = ReturnedPackage::where('status', '!=', 'Returned to Jumia Network')->count();
+        $otpCount        = ReturnPickup::where('otp_verified', true)->count();
+
+        return view('admin.dashboard', compact(
+            'stations',
+            'masterlistCount',
+            'incomingCount',
+            'returnsCount',
+            'otpCount'
+        ));
+    }
+
     public function index(Request $request)
     {
         $stationId = $request->input('station_id');
@@ -25,7 +52,19 @@ class AdminController extends Controller {
         $scans = ScanLog::where('station_id', $stationId)
             ->where('is_archived', false)
             ->latest()
-            ->get();
+            ->get()
+            ->map(function ($scan) {
+                $timestamp = $scan->scanned_at ?? $scan->created_at;
+                return [
+                    'id'              => $scan->id,
+                    'tracking_number' => $scan->tracking_number ?? $scan->code,
+                    'status'          => $scan->status ?? 'Scanned',
+                    'note'            => $scan->note ?? '',
+                    'scanned_at'      => $timestamp
+                        ? Carbon::parse($timestamp)->timezone('Africa/Nairobi')->toDateTimeString()
+                        : null,
+                ];
+            });
 
         return response()->json($scans);
     }
@@ -55,6 +94,44 @@ class AdminController extends Controller {
         ]);
 
         return back()->with('success', 'Delivery note/waybill uploaded successfully.');
+    }
+
+    public function saveManifestNote(Request $request, $stationId)
+    {
+        $request->validate([
+            'code' => 'required|string',
+            'note' => 'nullable|string',
+        ]);
+
+        $trackingNumber = strtoupper(trim($request->code));
+
+        // Also update MasterList if the item happens to exist there
+        $masterItem = MasterList::where('station_id', $stationId)
+            ->where('tracking_number', $trackingNumber)
+            ->first();
+
+        if ($masterItem) {
+            $masterItem->update(['note' => $request->note]);
+        }
+
+        // Force-create or update in ScanLog so even unscanned / unmatched codes appear instantly
+        $scanLog = ScanLog::updateOrCreate(
+            [
+                'station_id'      => $stationId,
+                'tracking_number' => $trackingNumber
+            ],
+            [
+                'note'        => $request->note,
+                'is_archived' => false,
+                'status'      => 'Admin Remark / Unscanned'
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Admin note saved successfully and queued for tracking.',
+            'data'    => $scanLog
+        ]);
     }
 
     public function createReturnPickup(Request $request, $returnedPackageId) {
@@ -88,6 +165,85 @@ class AdminController extends Controller {
         ]);
     }
 
+    public function storeReturnPackage(Request $request)
+    {
+        $validated = $request->validate([
+            'station'            => 'nullable|string',
+            'station_id'         => 'nullable',
+            'linehaul_id'        => 'required|string|max:255',
+            'courier_phone'      => 'required|string|max:50',
+            'courier_email'      => 'nullable|email|max:255',
+            'tracking_numbers'   => 'required|array|min:1',
+            'tracking_numbers.*' => 'required|string|max:255',
+            'reason'             => 'nullable|string|max:255',
+            'note'               => 'nullable|string|max:1000',
+        ]);
+
+        // Resolve station_id from station name/identifier if provided
+        $stationId = $validated['station_id'] ?? null;
+        if (!$stationId && !empty($validated['station'])) {
+            $station = Station::where('id', $validated['station'])
+                ->orWhere('name', $validated['station'])
+                ->orWhere('unique_identifier', $validated['station'])
+                ->first();
+            $stationId = $station?->id;
+        }
+        if (!$stationId) {
+            $stationId = Station::first()?->id;
+        }
+
+        $savedCount = 0;
+        $cleanedCodes = [];
+        $eatTimestamp = $this->eatNow()->toDateTimeString();
+
+        foreach ($validated['tracking_numbers'] as $rawCode) {
+            $trackingNumber = strtoupper(trim($rawCode));
+            if ($trackingNumber === '') {
+                continue;
+            }
+
+            ReturnedPackage::updateOrCreate(
+                [
+                    'tracking_number' => $trackingNumber,
+                ],
+                [
+                    'station_id'    => $stationId,
+                    'linehaul_id'   => $validated['linehaul_id'],
+                    'courier_phone' => $validated['courier_phone'],
+                    'courier_email' => $validated['courier_email'] ?? null,
+                    'reason'        => $validated['reason'] ?? 'Linehaul Return Dispatch',
+                    'note'          => $validated['note'] ?? '',
+                    'status'        => 'Dispatched to Linehaul',
+                    'return_date'   => $eatTimestamp,
+                ]
+            );
+
+            $cleanedCodes[] = $trackingNumber;
+            $savedCount++;
+        }
+
+        // Log SMS dispatch notification
+        if ($savedCount > 0 && !empty($validated['courier_phone'])) {
+            $codesPreview = implode(', ', $cleanedCodes);
+            SmsNotification::create([
+                'station_id'      => $stationId,
+                'recipient_phone' => $validated['courier_phone'],
+                'message_content' => "PickUp Hub Return Dispatch ({$validated['linehaul_id']}) at {$eatTimestamp} EAT: {$savedCount} package(s) handed over [{$codesPreview}].",
+                'status'          => 'sent',
+            ]);
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success'     => true,
+                'return_date' => $eatTimestamp,
+                'message'     => "{$savedCount} return package(s) dispatched to {$validated['linehaul_id']} successfully.",
+            ], 201);
+        }
+
+        return back()->with('success', "{$savedCount} return package(s) dispatched to {$validated['linehaul_id']} at {$eatTimestamp} EAT and SMS summary logged.");
+    }
+
     public function verifyReturnOtp(Request $request, $pickupId) {
         $request->validate(['otp_code' => 'required|digits:6']);
 
@@ -107,14 +263,16 @@ class AdminController extends Controller {
 
     public function processCustomerSmsReminders(Request $request, $stationId) {
         $station = Station::with('masterLists')->findOrFail($stationId);
+        $eatNow = $this->eatNow();
         
         $sentCount = 0;
         foreach ($station->masterLists as $item) {
             if (!empty($item->customer_phone)) {
-                $daysRemaining = now()->diffInDays($item->expiration_date, false);
+                $expiration = Carbon::parse($item->expiration_date, 'Africa/Nairobi');
+                $daysRemaining = $eatNow->diffInDays($expiration, false);
                 
                 if ($daysRemaining <= 2 && $daysRemaining >= 0) {
-                    $message = "Dear {$item->customer_name}, your package {$item->tracking_number} is expiring soon at our station. Please collect it before {$item->expiration_date->format('Y-m-d')}.";
+                    $message = "Dear {$item->customer_name}, your package {$item->tracking_number} is expiring soon at our station. Please collect it before {$expiration->format('Y-m-d')}.";
                     
                     SmsNotification::create([
                         'station_id' => $station->id,
@@ -145,6 +303,7 @@ class AdminController extends Controller {
                 'hub'             => $item->hub ?? 'KE-3PL-Flexcom',
                 'aging'           => $item->aging ?? 0,
                 'arrival_date'    => $item->arrival_date ?? $item->created_at,
+                'note'            => $item->note ?? '',
             ];
         });
 
@@ -200,12 +359,10 @@ class AdminController extends Controller {
 
     public function clearMasterList(Request $request, $stationId)
     {
-        // 1. Deactivate active master list items
         MasterList::where('station_id', $stationId)
             ->where('is_active', true)
             ->update(['is_active' => false]);
 
-        // 2. Archive scan logs for this station as well
         ScanLog::where('station_id', $stationId)
             ->where('is_archived', false)
             ->update(['is_archived' => true]);
@@ -263,7 +420,7 @@ class AdminController extends Controller {
         if ($activeLogs->isNotEmpty()) {
             PublishedAuditLog::create([
                 'station_id'    => $station->id,
-                'audit_date'    => today(),
+                'audit_date'    => $this->eatToday(),
                 'snapshot_data' => $activeLogs->toArray(),
                 'published_by'  => Auth::id() ?? $station->id,
             ]);
@@ -299,7 +456,7 @@ class AdminController extends Controller {
         if ($activeLogs->isNotEmpty()) {
             PublishedAuditLog::create([
                 'station_id'    => $station->id,
-                'audit_date'    => today(),
+                'audit_date'    => $this->eatToday(),
                 'snapshot_data' => $activeLogs->toArray(),
                 'published_by'  => Auth::id() ?? $station->id,
             ]);
@@ -436,7 +593,6 @@ class AdminController extends Controller {
         $file = fopen($path, 'r');
         $header = fgetcsv($file);
 
-        // Deactivate old master list items & archive active scans on fresh import
         MasterList::where('station_id', $stationId)
             ->where('is_active', true)
             ->update(['is_active' => false]);
@@ -446,6 +602,7 @@ class AdminController extends Controller {
             ->update(['is_archived' => true]);
 
         $count = 0;
+        $eatNow = $this->eatNow();
         while (($row = fgetcsv($file)) !== FALSE) {
             $trackingNumber = trim($row[0] ?? '');
             if (empty($trackingNumber)) continue;
@@ -453,7 +610,7 @@ class AdminController extends Controller {
             $hub = trim($row[1] ?? 'KE-3PL-Flexcom');
             $agingDays = intval($row[2] ?? 0);
             
-            $arrivalDate = now()->subDays($agingDays);
+            $arrivalDate = $eatNow->copy()->subDays($agingDays);
 
             MasterList::updateOrCreate(
                 ['station_id' => $stationId, 'tracking_number' => $trackingNumber],
@@ -503,7 +660,7 @@ class AdminController extends Controller {
     }
 
     public function publishAuditLog(Request $request, $stationId) {
-        $date = $request->input('audit_date', today());
+        $date = $request->input('audit_date', $this->eatToday()->toDateString());
         $logs = ScanLog::where('station_id', $stationId)
             ->whereDate('scanned_at', $date)
             ->get();
